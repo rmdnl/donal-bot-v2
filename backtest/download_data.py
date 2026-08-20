@@ -28,10 +28,11 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--symbols", default="BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT")
     p.add_argument("--months", type=int, default=6)
+    p.add_argument("--intervals", default="1h,4h")
     a = p.parse_args()
     os.makedirs(DATA_DIR, exist_ok=True)
     for sym in [s.strip() for s in a.symbols.split(",")]:
-        for iv in ["1h", "4h"]:
+        for iv in [x.strip() for x in a.intervals.split(",")]:
             df = fetch(sym, iv, a.months)
             f = os.path.join(DATA_DIR, f"{sym}_{iv}.csv")
             df.to_csv(f, index=False)
