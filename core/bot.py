@@ -1,4 +1,5 @@
 """Main trading loop - orchestrates regime, strategies, risk, execution, sync."""
+import os
 import time, logging
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_DOWN
@@ -32,7 +33,7 @@ class Bot:
         self.ks = cfg["kill_switch"]
         self.trade_history = trade_history
         self.anomaly = anomaly
-        self.macro = MacroGuard(cfg["risk"].get("macro_guard", {}))
+        self.macro = MacroGuard(cfg["risk"].get("macro_guard", {}), api_key=os.getenv("FINNHUB_API_KEY", ""))
         self.slip_alert = cfg["trading"].get("slippage_alert_pct", 0.15)
         self.ts = cfg["strategy"].get("time_stop", {})
         if notifier:
