@@ -51,7 +51,7 @@ class Bot:
                     self.risk.initialize(equity)
                 for sym in self.cfg["trading"]["symbols"]:
                     self.evaluate_symbol(sym, all_states, equity)
-                if self.anomaly:
+                if self.anomaly and not self.dry_run:
                     self.anomaly.periodic_check(all_states, equity)
             except Exception as e:
                 logger.error(f"loop_error: {e}")
@@ -134,6 +134,9 @@ class Bot:
             self.execute_buy(symbol, st, price, sig.atr_value, decision.adjusted_quote,
                              sl_mult, tp_mult, strat)
             self.states.save_state(st)
+
+        # Persist semua perubahan state (sync / breakeven / OCO) setiap cycle
+        self.states.save_state(st)
 
     # ---------------- EKSEKUSI ----------------
     def execute_buy(self, symbol, st, price, atr_v, quote, sl_mult, tp_mult, strat):
