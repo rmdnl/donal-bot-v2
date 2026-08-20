@@ -18,6 +18,10 @@ strategy:
     atr_period: 14
     sl_multiplier: 1.5
     tp_multiplier: 2.5
+    volume_confirm: true
+    volume_multiplier: 1.5
+    volume_period: 20
+    require_ema_slope: true
   mean_reversion:
     enabled: true
     bb_period: 20
@@ -25,8 +29,8 @@ strategy:
     rsi_period: 14
     rsi_oversold: 30
     rsi_overbought: 70
-    sl_multiplier: 1.5
-    tp_multiplier: 2.0
+    sl_multiplier: 1.0
+    tp_multiplier: 1.5
   breakeven:
     enabled: true
     trigger_atr_multiplier: 1.0
