@@ -8,6 +8,10 @@ trading:
 
 strategy:
   multi_regime_enabled: true
+  time_stop:
+    enabled: true
+    max_hold_hours: 48
+    min_profit_pct: 0.5
   donal:
     ema_fast_length: 20
     ema_slow_length: 60
