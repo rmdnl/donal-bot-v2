@@ -1,6 +1,6 @@
 trading:
   mode: "testnet"
-  symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+  symbols: ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
   poll_interval_seconds: 60
   fee_rate: 0.001
   min_order_usdt: 10.0
