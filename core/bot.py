@@ -19,7 +19,7 @@ def round_price(price, filters):
     return round_step(price, float(tick.get("tickSize", 0.01)))
 
 class Bot:
-    def __init__(self, client, states, risk, breaker, breakeven, notifier, cfg, dry_run=False):
+    def __init__(self, client, states, risk, breaker, breakeven, notifier, cfg, dry_run=False, trade_history=None, anomaly=None):
         self.client, self.states, self.risk = client, states, risk
         self.breaker, self.breakeven, self.notifier = breaker, breakeven, notifier
         self.cfg, self.dry_run = cfg, dry_run
@@ -28,6 +28,8 @@ class Bot:
         self.donal = DonalStrategy(cfg["strategy"]["donal"])
         self.mr = MeanReversionStrategy(cfg["strategy"]["mean_reversion"])
         self.ks = cfg["kill_switch"]
+        self.trade_history = trade_history
+        self.anomaly = anomaly
         if notifier:
             notifier.register("/status", self.cmd_status)
             notifier.register("/positions", self.cmd_positions)
@@ -49,6 +51,8 @@ class Bot:
                     self.risk.initialize(equity)
                 for sym in self.cfg["trading"]["symbols"]:
                     self.evaluate_symbol(sym, all_states, equity)
+                if self.anomaly:
+                    self.anomaly.periodic_check(all_states, equity)
             except Exception as e:
                 logger.error(f"loop_error: {e}")
             time.sleep(interval)
@@ -164,6 +168,8 @@ class Bot:
                                              round_price(st.sl_price * 0.999, filters))
             st.oco_order_list_id = oco.get("orderListId") if oco else None
             self.breaker.record_success()
+            if self.trade_history:
+                self.trade_history.record_entry(symbol, fp, fq, strat)
             if self.notifier:
                 self.notifier.send(f"BUY {symbol} @ {fp:.4f} qty {fq}\nSL {st.sl_price:.4f} | TP {st.tp_price:.4f} | {strat}")
         except Exception as e:
@@ -190,6 +196,8 @@ class Bot:
                     self.notifier.send(f"SELL FAILED {symbol}: {e} - TUTUP MANUAL!")
                 return
         pnl = (price - st.entry_price) / st.entry_price * 100 if st.entry_price else 0
+        if self.trade_history:
+            self.trade_history.record_exit(symbol, price, st.quantity, st.entry_price, exit_type, st.strategy)
         if self.notifier:
             self.notifier.send(f"SELL {symbol} @ {price:.4f} ({exit_type})\nPnL {pnl:+.2f}% | {reason}")
         st.in_position = False
@@ -225,6 +233,8 @@ class Bot:
         etype = "TP" if st.tp_price and fill >= st.tp_price * 0.999 else (
                 "SL" if st.sl_price and fill <= st.sl_price * 1.001 else "SYNC")
         pnl = (fill - st.entry_price) / st.entry_price * 100 if st.entry_price else 0
+        if self.trade_history:
+            self.trade_history.record_exit(symbol, fill, st.quantity, st.entry_price, etype, st.strategy)
         if self.notifier:
             self.notifier.send(f"{etype} {symbol} terisi @ {fill:.4f}\nPnL {pnl:+.2f}%")
         st.in_position = False

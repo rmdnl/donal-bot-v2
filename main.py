@@ -10,6 +10,9 @@ from risk.risk_manager import RiskManager
 from risk.circuit_breaker import CircuitBreaker
 from risk.breakeven_manager import BreakevenManager
 from monitoring.telegram_notifier import TelegramNotifier
+from core.trade_history import TradeHistory
+from monitoring.anomaly_detector import AnomalyDetector
+from monitoring.daily_report import DailyReport
 
 def main():
     p = argparse.ArgumentParser(description="DONAL Bot Pro")
@@ -39,6 +42,10 @@ def main():
 
     notifier = TelegramNotifier(os.getenv("TELEGRAM_BOT_TOKEN", ""),
                                 os.getenv("TELEGRAM_CHAT_ID", ""))
+    history = TradeHistory(cfg["database"]["sqlite_file"])
+    anomaly = AnomalyDetector(notifier=notifier)
+    daily = DailyReport(notifier, history, send_time_utc=cfg["monitoring"]["daily_report"]["send_time_utc"])
+    notifier.register("/report", daily.send_now)
 
     if not (key and sec):
         print("⚠️  No API keys in .env - bot loop tidak jalan")
@@ -56,6 +63,8 @@ def main():
                                    cfg["strategy"]["breakeven"]["trigger_atr_multiplier"]),
         notifier=notifier,
         cfg=cfg,
+        trade_history=history,
+        anomaly=anomaly,
         dry_run=args.dry_run or cfg["trading"].get("dry_run", False),
     )
 
