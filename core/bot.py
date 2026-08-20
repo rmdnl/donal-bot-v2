@@ -5,6 +5,7 @@ from decimal import Decimal, ROUND_DOWN
 
 from risk.kill_switch import check_flash_crash, is_in_cooldown, new_cooldown
 from strategies.regime_detector import detect_regime, Regime
+from core.trade_history import TradeHistory
 from strategies.donal_strategy import DonalStrategy
 from strategies.mean_reversion_strategy import MeanReversionStrategy
 
@@ -33,6 +34,10 @@ class Bot:
         if notifier:
             notifier.register("/status", self.cmd_status)
             notifier.register("/positions", self.cmd_positions)
+            notifier.register("/regime", self.cmd_regime)
+            notifier.register("/pnl", self.cmd_pnl)
+            notifier.register("/recent", self.cmd_recent)
+            notifier.register("/config", self.cmd_config)
             notifier.register("/pause", self.cmd_pause)
             notifier.register("/resume", self.cmd_resume)
             notifier.register("/close", self.cmd_close)
@@ -308,3 +313,63 @@ class Bot:
         except Exception: px = st.entry_price
         self.execute_exit(sym, st, px, "MANUAL", "close via Telegram")
         self.states.save_state(st)
+
+    def cmd_regime(self, args):
+        lines = ["Current Regimes:"]
+        for sym in self.cfg["trading"]["symbols"]:
+            try:
+                df4 = self.client.get_closed_klines(sym, "4h", 100)
+                reg = detect_regime(df4)
+                emoji = {"TREND": "🟢", "SIDEWAYS": "🟡", "BEAR": "🔴", "TRANSITION": "⚪"}.get(reg.mode.value, "")
+                lines.append(f"{emoji} {sym}: {reg.mode.value} (ADX {reg.adx:.1f})")
+            except Exception as e:
+                lines.append(f"❌ {sym}: {e}")
+        if self.notifier: self.notifier.send("\n".join(lines))
+
+    def cmd_pnl(self, args):
+        history = TradeHistory(self.cfg["database"]["sqlite_file"])
+        s = history.get_summary()
+        if s["total"] == 0:
+            if self.notifier: self.notifier.send("Belum ada trade tercatat")
+            return
+        msg = (f"📊 Performance\n"
+               f"Trades: {s['total']} (W:{s['wins']} L:{s['losses']})\n"
+               f"Win rate: {s['win_rate']}%\n"
+               f"Profit factor: {s['profit_factor']}\n"
+               f"Total PnL: {s['total_pnl']:+.4f} USDT")
+        if self.notifier: self.notifier.send(msg)
+
+    def cmd_recent(self, args):
+        try: n = int(args.strip() or 5)
+        except ValueError: n = 5
+        history = TradeHistory(self.cfg["database"]["sqlite_file"])
+        trades = history.get_closed_trades(n)
+        if not trades:
+            if self.notifier: self.notifier.send("Belum ada trade")
+            return
+        lines = [f"📋 {len(trades)} Trade Terakhir:"]
+        for t in trades:
+            emoji = "🟢" if t["pnl_usdt"] > 0 else "🔴"
+            lines.append(f"{emoji} {t['symbol']} | {t['exit_type']} | {t['pnl_usdt']:+.4f} ({t['pnl_pct']:+.2f}%)")
+        if self.notifier: self.notifier.send("\n".join(lines))
+
+    def cmd_config(self, args):
+        c = self.cfg
+        lines = [
+            "⚙️ Config Aktif",
+            f"Mode: {c['trading']['mode']}",
+            f"Symbols: {', '.join(c['trading']['symbols'])}",
+            f"Poll: {c['trading']['poll_interval_seconds']}s",
+            f"Multi-regime: {c['strategy']['multi_regime_enabled']}",
+            f"DONAL SL/TP: {c['strategy']['donal']['sl_multiplier']}/{c['strategy']['donal']['tp_multiplier']} ATR",
+            f"MR SL/TP: {c['strategy']['mean_reversion']['sl_multiplier']}/{c['strategy']['mean_reversion']['tp_multiplier']}",
+            f"Risk/trade: {c['risk']['risk_per_trade_pct']}%",
+            f"Daily limit: -{c['risk']['daily_loss_limit_pct']}%",
+            f"Weekly limit: -{c['risk']['weekly_loss_limit_pct']}%",
+            f"Max DD: {c['risk']['max_drawdown_pct']}%",
+            f"Max positions: {c['risk']['max_open_positions']}",
+            f"Exposure/asset: {c['risk']['max_exposure_per_asset_pct']}%",
+            f"Total exposure: {c['risk']['max_total_exposure_pct']}%",
+            f"Kill switch: -{c['kill_switch']['crash_threshold_15m']}%/{c['kill_switch']['lookback_minutes']}m",
+        ]
+        if self.notifier: self.notifier.send("\n".join(lines))

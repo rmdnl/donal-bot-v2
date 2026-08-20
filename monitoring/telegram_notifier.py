@@ -54,9 +54,7 @@ class TelegramNotifier:
         parts = text.split(maxsplit=1)
         cmd = parts[0].lower().split("@")[0]
         args = parts[1] if len(parts) > 1 else ""
-        if cmd == "/help":
-            self.send("Commands:\n" + "\n".join(sorted(self._handlers.keys())))
-            return
+        
         h = self._handlers.get(cmd)
         if h:
             try:
@@ -64,4 +62,20 @@ class TelegramNotifier:
             except Exception as e:
                 self.send(f"Error {cmd}: {e}")
         else:
-            self.send("Unknown command. Ketik /help")
+            self.send(self._help_text())
+
+    def _help_text(self):
+        return (
+            "📋 Commands:\n\n"
+            "/status - Bot + risk status\n"
+            "/positions - Open positions\n"
+            "/regime - Market regime semua symbol\n"
+            "/pnl - Performance summary\n"
+            "/recent [N] - N trade terakhir\n"
+            "/config - Konfigurasi aktif\n"
+            "/pause - Block new entries\n"
+            "/resume - Allow entries\n"
+            "/close SYMBOL - Close position\n"
+            "/report - Daily report\n"
+            "/help - This message"
+        )
