@@ -46,11 +46,12 @@ hasil backtest mereproduksi perilaku live secara akurat.
 - Laporan performa terjadwal + on-demand
 - Deteksi anomali: kesehatan API, penurunan saldo, posisi tak terlindungi
 - Logging JSON terstruktur dengan rotasi dan correlation ID
-- Dashboard analitik Streamlit
+- Dashboard analitik Streamlit (service terpisah, port 8501)
 - Suite unit test
 
 ### Riset
 - Engine backtest multi-regime (identik dengan logika live)
+- Engine alternatif: swing Daily+4H, scalping 5m, pullback 15m
 - Optimizer parameter grid-search
 - Laporan visual equity / drawdown
 
@@ -71,6 +72,8 @@ strategies/
   regime_detector.py        routing regime ADX + EMA
   donal_strategy.py         trend-following breakout
   mean_reversion_strategy.py strategi sideways
+  swing_strategy.py         swing Daily+4H + trailing stop
+  pullback_strategy.py      pullback 15m + filter tren 4H
   indicators.py             EMA / RSI / ATR / HH (Wilder)
 risk/
   risk_manager.py           sizing + clamp exposure + limit rugi
@@ -81,13 +84,25 @@ monitoring/
   telegram_notifier.py      notifikasi + perintah
   daily_report.py           laporan terjadwal
   anomaly_detector.py       pemantauan kesehatan
-  dashboard.py              UI web Streamlit
+  dashboard.py              UI web Streamlit (port 8501)
 backtest/
   download_data.py          pengunduh data historis
   engine.py                 simulator multi-regime
+  engine_swing.py           simulator swing Daily+4H
+  engine_scalp.py           simulator scalping 5m
+  engine_pullback.py        simulator pullback 15m
   optimizer.py              grid search
   report.py                 chart equity/drawdown
 ~~~
+
+---
+
+## Layanan (systemd)
+
+| Service           | Fungsi                          |
+|-------------------|---------------------------------|
+| `donal-bot-pro`   | Bot trading (testnet/live)      |
+| `donal-dashboard` | Dashboard web di port 8501      |
 
 ---
 
@@ -101,7 +116,10 @@ chmod +x scripts/install_vps.sh
 
 nano .env                  # isi kredensial
 sudo systemctl start donal-bot-pro
+sudo systemctl start donal-dashboard
 journalctl -u donal-bot-pro -f
+
+# Dashboard web tersedia di http://<IP-VPS>:8501
 ```
 
 Jalankan pertama kali dalam mode simulasi:
@@ -145,17 +163,17 @@ Parameter risiko default:
 /close SYM   tutup posisi manual
 /report      kirim laporan performa
 /help        daftar perintah
-~~~
+```
 
 ---
 
 ## Backtesting
 
 ```bash
-# Unduh 6 bulan data historis
+# Unduh data historis
 venv/bin/python -m backtest.download_data --symbols BTCUSDT,ETHUSDT --months 6
 
-# Jalankan backtest multi-regime
+# Backtest multi-regime
 venv/bin/python -m backtest.engine --symbol BNBUSDT
 
 # Uji A/B: routing regime nyala vs mati
@@ -166,6 +184,11 @@ venv/bin/python -m backtest.optimizer --symbol BNBUSDT --top 10
 
 # Buat chart equity/drawdown
 venv/bin/python -m backtest.report --symbol BNBUSDT
+
+# Backtest strategi alternatif (riset)
+venv/bin/python -m backtest.engine_swing --symbol BNBUSDT
+venv/bin/python -m backtest.engine_scalp --symbol BTCUSDT
+venv/bin/python -m backtest.engine_pullback --symbol BTCUSDT
 ```
 
 ---
@@ -182,17 +205,23 @@ venv/bin/python -m pytest tests/ -q
 
 - `.env` di-gitignore; jangan pernah commit rahasia
 - API key Binance: hanya spot trading, withdrawals dimatikan, dibatasi IP
-- Mulai dari testnet; naik ke live hanya setelah observasi stabil
+- Mulai dari testnet; naik ke live hanya setelah validasi positif
 
 ---
 
-## Roadmap
+## Status & Roadmap
 
 Selesai: strategi multi-regime, risiko berlapis, OCO self-heal, breakeven,
-kendali Telegram, dashboard, suite backtest, unit test.
+kendali Telegram, dashboard, suite backtest (multi-regime, swing, scalping,
+pullback), unit test.
 
-Direncanakan: eksekusi limit-order (fee maker), volatility targeting,
-drawdown de-risking, backup offsite otomatis, CI/CD, validasi walk-forward.
+Hasil riset (18 bulan data, 4 simbol, 6 keluarga strategi): strategi teknikal
+retail di pair major spot tidak memiliki edge setelah biaya (PF terbaik 0.89).
+Fase riset alpha ditutup; bot berjalan di testnet untuk observasi stabilitas
+platform.
+
+Direncanakan (opsional): backup offsite otomatis, CI/CD, riset funding/basis
+market-neutral.
 
 ---
 
