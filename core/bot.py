@@ -6,6 +6,7 @@ from decimal import Decimal, ROUND_DOWN
 from risk.kill_switch import check_flash_crash, is_in_cooldown, new_cooldown
 from strategies.regime_detector import detect_regime, Regime
 from core.trade_history import TradeHistory
+from risk.macro_guard import MacroGuard
 from strategies.donal_strategy import DonalStrategy
 from strategies.mean_reversion_strategy import MeanReversionStrategy
 
@@ -31,6 +32,9 @@ class Bot:
         self.ks = cfg["kill_switch"]
         self.trade_history = trade_history
         self.anomaly = anomaly
+        self.macro = MacroGuard(cfg["risk"].get("macro_guard", {}))
+        self.slip_alert = cfg["trading"].get("slippage_alert_pct", 0.15)
+        self.ts = cfg["strategy"].get("time_stop", {})
         if notifier:
             notifier.register("/status", self.cmd_status)
             notifier.register("/positions", self.cmd_positions)
@@ -54,8 +58,14 @@ class Bot:
                 equity = self.client.get_total_portfolio_value_usdt(self.cfg["trading"]["symbols"], all_states)
                 if self.risk._peak is None:
                     self.risk.initialize(equity)
+                btc_regime = None
+                if self.cfg["strategy"]["multi_regime_enabled"] and "BTCUSDT" in self.cfg["trading"]["symbols"]:
+                    try:
+                        btc_regime = detect_regime(self.client.get_closed_klines("BTCUSDT", "4h", 100))
+                    except Exception as e:
+                        logger.warning(f"btc_regime_fail {e}")
                 for sym in self.cfg["trading"]["symbols"]:
-                    self.evaluate_symbol(sym, all_states, equity)
+                    self.evaluate_symbol(sym, all_states, equity, btc_regime)
                 if self.anomaly and not self.dry_run:
                     self.anomaly.periodic_check(all_states, equity)
             except Exception as e:
@@ -66,7 +76,7 @@ class Bot:
         self.running = False
 
     # ---------------- EVALUASI PER SYMBOL ----------------
-    def evaluate_symbol(self, symbol, all_states, equity):
+    def evaluate_symbol(self, symbol, all_states, equity, btc_regime=None):
         if self.is_paused: return
         st = all_states[symbol]
         df1 = self.client.get_closed_klines(symbol, "1h", 200)
@@ -91,6 +101,21 @@ class Bot:
                     self._replace_oco(symbol, st)
                 if self.notifier:
                     self.notifier.send(f"BREAKEVEN {symbol}: SL moved to {rsl:.4f}")
+
+        # Time stop: posisi terlalu lama tanpa profit -> close
+        if st.in_position and self.ts.get("enabled", True) and st.entry_ts:
+            try:
+                entry_dt = datetime.fromisoformat(st.entry_ts)
+                if entry_dt.tzinfo is None:
+                    entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+                hold_h = (datetime.now(timezone.utc) - entry_dt).total_seconds() / 3600
+                pnl_pct = (price - st.entry_price) / st.entry_price * 100 if st.entry_price else 0
+                if hold_h >= self.ts.get("max_hold_hours", 48) and pnl_pct < self.ts.get("min_profit_pct", 0.5):
+                    self.execute_exit(symbol, st, price, "TIME_STOP", f"hold {hold_h:.0f}h pnl {pnl_pct:+.2f}%")
+                    self.states.save_state(st)
+                    return
+            except ValueError:
+                pass
 
         # Kill switch (candle 1m)
         df1m = self.client.get_recent_klines(symbol, "1m",
@@ -130,6 +155,15 @@ class Bot:
 
         # Entry + risk veto
         if sig.buy_signal and not st.in_position:
+            blackout, reason = self.macro.is_blackout(datetime.now(timezone.utc))
+            if blackout:
+                logger.info(f"macro_veto {symbol}: {reason}")
+                self.states.save_state(st)
+                return
+            if symbol != "BTCUSDT" and btc_regime is not None and btc_regime.mode == Regime.BEAR:
+                logger.info(f"btc_gate_veto {symbol}: BTC bear")
+                self.states.save_state(st)
+                return
             est_entry = price * 1.0005
             est_sl = est_entry - sig.atr_value * sl_mult
             decision = self.risk.evaluate_entry(symbol, equity, all_states, est_entry, est_sl)
@@ -166,6 +200,11 @@ class Bot:
             fq = sum(float(f["qty"]) for f in fills)
             fc = sum(float(f["price"]) * float(f["qty"]) for f in fills)
             fp = fc / fq
+            dev = abs(fp - price) / price * 100 if price else 0
+            if dev > self.slip_alert:
+                logger.warning(f"slippage_high {symbol} dev={dev:.3f}%")
+                if self.notifier:
+                    self.notifier.send(f"SLIPPAGE WARNING {symbol}: fill deviasi {dev:.3f}% dari sinyal")
             st.in_position = True
             st.entry_price, st.quantity, st.entry_atr = fp, fq, atr_v
             st.strategy = strat
@@ -197,7 +236,13 @@ class Bot:
                 if fills:
                     q = sum(float(f["qty"]) for f in fills)
                     c = sum(float(f["price"]) * float(f["qty"]) for f in fills)
+                    ref = price
                     price = c / q if q else price
+                    dev = abs(price - ref) / ref * 100 if ref else 0
+                    if dev > self.slip_alert:
+                        logger.warning(f"slippage_high {symbol} dev={dev:.3f}%")
+                        if self.notifier:
+                            self.notifier.send(f"SLIPPAGE WARNING {symbol}: deviasi {dev:.3f}%")
             except Exception as e:
                 logger.error(f"sell_failed {symbol}: {e}")
                 if self.notifier:
