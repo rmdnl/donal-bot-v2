@@ -34,25 +34,46 @@ def svc(name):
     except Exception:
         return "unknown"
 
+HOSTS = ["https://data-api.binance.vision", "https://api.binance.com", "https://api1.binance.com"]
+_last_err = {"msg": ""}
+
+def _sym_list():
+    s = SYMBOLS
+    if isinstance(s, str):
+        return [x.strip() for x in s.split(",") if x.strip()]
+    return list(s)
+
+SYMS = _sym_list()
+
 def tickers():
-    try:
-        r = requests.get("https://data-api.binance.vision/api/v3/ticker/24hr",
-                         timeout=5)
-        data = r.json()
-        return {x["symbol"]: x for x in data if x.get("symbol") in SYMBOLS} if isinstance(data, list) else {}
-    except Exception:
-        return {}
+    errs = []
+    for h in HOSTS:
+        try:
+            r = requests.get(h + "/api/v3/ticker/24hr", timeout=8)
+            r.raise_for_status()
+            data = r.json()
+            if isinstance(data, list):
+                _last_err["msg"] = ""
+                return {x["symbol"]: x for x in data if x.get("symbol") in SYMS}
+            errs.append(h + ": " + str(data)[:60])
+        except Exception as e:
+            errs.append(h + ": " + type(e).__name__)
+    _last_err["msg"] = " | ".join(errs)
+    return {}
 
 def regime(sym):
-    try:
-        r = requests.get("https://data-api.binance.vision/api/v3/klines",
-                         params={"symbol":sym,"interval":"4h","limit":120}, timeout=5)
-        cols=["ot","open","high","low","close","volume","ct","qv","tr","tb","tq","ig"]
-        df = pd.DataFrame(r.json(), columns=cols)
-        for c in ["open","high","low","close","volume"]: df[c]=df[c].astype(float)
-        return detect_regime(df).mode.value
-    except Exception:
-        return "?"
+    for h in HOSTS:
+        try:
+            r = requests.get(h + "/api/v3/klines",
+                             params={"symbol": sym, "interval": "4h", "limit": 120}, timeout=8)
+            cols = ["ot","open","high","low","close","volume","ct","qv","tr","tb","tq","ig"]
+            df = pd.DataFrame(r.json(), columns=cols)
+            for c in ["open","high","low","close","volume"]:
+                df[c] = df[c].astype(float)
+            return detect_regime(df).mode.value
+        except Exception:
+            continue
+    return "?"
 
 def query(sql):
     try:
@@ -96,7 +117,7 @@ def get_data():
                            "symbol":str(r.get("symbol","")),
                            "exit":str(r.get("exit_type","")),
                            "pnl":float(r.get("pnl_usdt",0) or 0)})
-    return {"time":time.strftime("%H:%M:%S"),"mode":MODE,"bot":svc("donal-bot-pro"),
+    return {"time":time.strftime("%H:%M:%S"),"mode":MODE,"bot":svc("donal-bot-pro"),"err":_last_err["msg"],
             "markets":markets,"perf":perf,"recent":recent}
 
 HTML = """<!DOCTYPE html><html lang="id"><head>
@@ -140,7 +161,7 @@ footer{margin-top:16px;font-size:.72rem;color:#6b7280;display:flex;justify-conte
 <div class="stat"><b id="sPnl">–</b><span>Total PnL</span></div></div>
 <div class="card"><h2>Equity Curve</h2><svg id="spark" viewBox="0 0 100 30" preserveAspectRatio="none"></svg></div>
 <h2>Trade Terakhir</h2><div class="card"><table><thead><tr><th>Waktu</th><th>Simbol</th><th>Exit</th><th>PnL</th></tr></thead><tbody id="recent"></tbody></table></div>
-<footer><span>⏱ <span id="clock"></span></span><span>auto-refresh 5s</span></footer>
+<footer><span id="err" style="color:#f87171"></span><span>⏱ <span id="clock"></span></span><span>auto-refresh 5s</span></footer>
 </div><script>
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
@@ -149,7 +170,7 @@ const mn=Math.min(...v),mx=Math.max(...v),r=(mx-mn)||1;
 const pts=v.map((x,i)=>`${i/(v.length-1)*100},${28-((x-mn)/r)*26}`).join(' ');
 $('spark').innerHTML=`<polyline points="${pts}" fill="none" stroke="#34d399" stroke-width="1.2"/>`}
 async function tick(){try{const d=await(await fetch('/api/data')).json();
-$('clock').textContent=d.time;$('mode').textContent=d.mode.toUpperCase();
+$('clock').textContent=d.time;$('err').textContent=d.err?('⚠ '+d.err):'';$('mode').textContent=d.mode.toUpperCase();
 const b=$('bot');b.textContent='BOT '+d.bot.toUpperCase();b.className='pill '+(d.bot==='active'?'ok':'bad');
 $('coins').innerHTML=d.markets.map(m=>`<div class="card"><div class="row"><span class="sym">${m.symbol}</span><span class="badge ${m.regime}">${m.regime}</span></div><div class="price">$${fmt(m.price)}</div><div class="chg ${m.chg>=0?'up':'down'}">${m.chg>=0?'+':''}${fmt(m.chg)}% · 24h</div>${m.pos?`<div class="pos ${m.pos.pnl>=0?'up':'down'}">Posisi: ${m.pos.pnl>=0?'+':''}${fmt(m.pos.pnl)} USDT (${m.pos.pct>=0?'+':''}${fmt(m.pos.pct)}%)</div>`:''}</div>`).join('');
 $('sTrades').textContent=d.perf.trades;$('sWr').textContent=d.perf.wr+'%';
