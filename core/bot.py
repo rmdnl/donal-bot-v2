@@ -7,7 +7,6 @@ from decimal import Decimal, ROUND_DOWN
 from risk.kill_switch import check_flash_crash, is_in_cooldown, new_cooldown
 from strategies.regime_detector import detect_regime, Regime
 from core.trade_history import TradeHistory
-from risk.macro_guard import MacroGuard
 from strategies.donal_strategy import DonalStrategy
 from strategies.mean_reversion_strategy import MeanReversionStrategy
 
@@ -33,7 +32,6 @@ class Bot:
         self.ks = cfg["kill_switch"]
         self.trade_history = trade_history
         self.anomaly = anomaly
-        self.macro = MacroGuard(cfg["risk"].get("macro_guard", {}), api_key=os.getenv("FINNHUB_API_KEY", ""))
         self.slip_alert = cfg["trading"].get("slippage_alert_pct", 0.15)
         self.ts = cfg["strategy"].get("time_stop", {})
         if notifier:
@@ -156,9 +154,7 @@ class Bot:
 
         # Entry + risk veto
         if sig.buy_signal and not st.in_position:
-            blackout, reason = self.macro.is_blackout(datetime.now(timezone.utc))
             if blackout:
-                logger.info(f"macro_veto {symbol}: {reason}")
                 self.states.save_state(st)
                 return
             if symbol != "BTCUSDT" and btc_regime is not None and btc_regime.mode == Regime.BEAR:
