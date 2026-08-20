@@ -38,8 +38,10 @@ strategy:
     rsi_period: 14
     hh_period: 50
     atr_period: 14
-    sl_atr: 2.0
-    trail_atr: 3.0
+    sl_atr: 1.5
+    trail_atr: 2.0
+    partial_tp_atr: 2.0
+    partial_tp_pct: 50
   breakeven:
     enabled: true
     trigger_atr_multiplier: 1.0
