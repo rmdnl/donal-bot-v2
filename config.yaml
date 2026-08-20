@@ -31,6 +31,16 @@ strategy:
     rsi_overbought: 70
     sl_multiplier: 1.0
     tp_multiplier: 1.5
+  pullback:
+    enabled: true
+    ema_fast: 20
+    ema_slow: 50
+    ema_entry: 20
+    ema_trend: 50
+    rsi_period: 14
+    atr_period: 14
+    sl_atr: 1.5
+    tp_atr: 4.0
   swing:
     enabled: true
     ema_fast: 20

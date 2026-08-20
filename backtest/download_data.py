@@ -28,7 +28,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--symbols", default="BTCUSDT,ETHUSDT,BNBUSDT,SOLUSDT")
     p.add_argument("--months", type=int, default=6)
-    p.add_argument("--intervals", default="1h,4h")
+    p.add_argument("--intervals", default="1h,4h,15m")
     a = p.parse_args()
     os.makedirs(DATA_DIR, exist_ok=True)
     for sym in [s.strip() for s in a.symbols.split(",")]:
