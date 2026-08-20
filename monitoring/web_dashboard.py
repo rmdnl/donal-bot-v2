@@ -75,6 +75,62 @@ def regime(sym):
             continue
     return "?"
 
+def all_tickers():
+    for h in HOSTS:
+        try:
+            r = requests.get(h + "/api/v3/ticker/24hr", timeout=8)
+            r.raise_for_status()
+            data = r.json()
+            if isinstance(data, list):
+                return data
+        except Exception:
+            continue
+    return []
+
+def _k4(sym):
+    for h in HOSTS:
+        try:
+            r = requests.get(h + "/api/v3/klines",
+                             params={"symbol": sym, "interval": "4h", "limit": 120}, timeout=8)
+            cols = ["ot","open","high","low","close","volume","ct","qv","tr","tb","tq","ig"]
+            df = pd.DataFrame(r.json(), columns=cols)
+            for c in ["open","high","low","close","volume"]:
+                df[c] = df[c].astype(float)
+            return df
+        except Exception:
+            continue
+    return None
+
+def scan_signals():
+    from strategies.indicators import ema, rsi, highest
+    tick = cached("alltick", 30, all_tickers)
+    rows = [t for t in tick if t.get("symbol","").endswith("USDT")
+            and not any(x in t.get("symbol","") for x in ["UP","DOWN","BULL","BEAR"])]
+    rows.sort(key=lambda x: float(x.get("quoteVolume",0) or 0), reverse=True)
+    out = []
+    for t in rows[:20]:
+        sym = t["symbol"]
+        df = cached(f"k4_{sym}", 60, lambda s=sym: _k4(s))
+        if df is None or len(df) < 60:
+            continue
+        close = df["close"]
+        ef = float(ema(close,20).iloc[-1]); es = float(ema(close,50).iloc[-1])
+        r = float(rsi(close,14).iloc[-1])
+        hh = float(highest(df["high"],20).shift(1).iloc[-1])
+        ll = float(df["low"].rolling(20).min().shift(1).iloc[-1])
+        cl = float(close.iloc[-1])
+        if ef > es and r > 50 and cl > hh: sig = "BUY"
+        elif ef > es and cl < ef and cl > es: sig = "PULLBACK"
+        elif ef < es and cl < ll: sig = "SELL"
+        else: sig = "WAIT"
+        out.append({"symbol":sym.replace("USDT",""),
+                    "price":float(t.get("lastPrice",0) or 0),
+                    "chg":float(t.get("priceChangePercent",0) or 0),
+                    "rsi":round(r,0),"signal":sig})
+    order = {"BUY":0,"PULLBACK":1,"SELL":2,"WAIT":3}
+    out.sort(key=lambda x: order.get(x["signal"],4))
+    return out
+
 def query(sql):
     try:
         con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=5)
@@ -118,7 +174,7 @@ def get_data():
                            "exit":str(r.get("exit_type","")),
                            "pnl":float(r.get("pnl_usdt",0) or 0)})
     return {"time":time.strftime("%H:%M:%S"),"mode":MODE,"bot":svc("donal-bot-pro"),"err":_last_err["msg"],
-            "markets":markets,"perf":perf,"recent":recent}
+            "markets":markets,"perf":perf,"recent":recent,"signals":cached("scan",60,scan_signals)}
 
 HTML = """<!DOCTYPE html><html lang="id"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -152,6 +208,10 @@ td,th{padding:8px 6px;text-align:left;border-bottom:1px solid rgba(255,255,255,.
 th{color:#6b7280;font-weight:600;text-transform:uppercase;font-size:.68rem}
 svg{width:100%;height:60px}
 footer{margin-top:16px;font-size:.72rem;color:#6b7280;display:flex;justify-content:space-between}
+.sig{padding:2px 10px;border-radius:999px;font-size:.7rem;font-weight:800}
+.sig-BUY{background:#065f46;color:#34d399}.sig-PULLBACK{background:#1e3a8a;color:#93c5fd}
+.sig-SELL{background:#7f1d1d;color:#fca5a5}.sig-WAIT{background:#374151;color:#9ca3af}
+.disc{font-size:.68rem;color:#6b7280;margin-top:6px}
 </style></head><body><div class="wrap">
 <header><h1>🤖 Donal Bot Pro</h1>
 <div><span class="pill mode" id="mode"></span> <span class="pill ok" id="bot"></span></div></header>
@@ -160,6 +220,9 @@ footer{margin-top:16px;font-size:.72rem;color:#6b7280;display:flex;justify-conte
 <div class="stat"><b id="sWr">–</b><span>Win Rate</span></div>
 <div class="stat"><b id="sPnl">–</b><span>Total PnL</span></div></div>
 <div class="card"><h2>Equity Curve</h2><svg id="spark" viewBox="0 0 100 30" preserveAspectRatio="none"></svg></div>
+<h2>📡 Signal Scanner · Top 20 Volume · 4H</h2>
+<div class="grid" id="scan"></div>
+<p class="disc">⚠️ Sinyal teknikal informatif untuk monitoring. Berdasarkan riset 18 bulan, sinyal semacam ini tidak memiliki edge setelah biaya — jangan dieksekusi dengan dana asli.</p>
 <h2>Trade Terakhir</h2><div class="card"><table><thead><tr><th>Waktu</th><th>Simbol</th><th>Exit</th><th>PnL</th></tr></thead><tbody id="recent"></tbody></table></div>
 <footer><span id="err" style="color:#f87171"></span><span>⏱ <span id="clock"></span></span><span>auto-refresh 5s</span></footer>
 </div><script>
@@ -176,6 +239,7 @@ $('coins').innerHTML=d.markets.map(m=>`<div class="card"><div class="row"><span 
 $('sTrades').textContent=d.perf.trades;$('sWr').textContent=d.perf.wr+'%';
 const p=$('sPnl');p.textContent=(d.perf.pnl>=0?'+':'')+fmt(d.perf.pnl);p.className=d.perf.pnl>=0?'up':'down';
 spark(d.perf.equity);
+$('scan').innerHTML=d.signals.map(s=>`<div class="card"><div class="row"><span class="sym">${s.symbol}</span><span class="sig sig-${s.signal}">${s.signal}</span></div><div class="price" style="font-size:1.05rem">$${fmt(s.price)}</div><div class="chg ${s.chg>=0?'up':'down'}">${s.chg>=0?'+':''}${fmt(s.chg)}% · RSI ${s.rsi}</div></div>`).join('')||'<p class="disc">Memuat scanner…</p>';
 $('recent').innerHTML=d.recent.map(r=>`<tr><td>${r.time}</td><td>${r.symbol}</td><td>${r.exit}</td><td class="${r.pnl>=0?'up':'down'}">${r.pnl>=0?'+':''}${fmt(r.pnl)}</td></tr>`).join('')||'<tr><td colspan=4>Belum ada trade</td></tr>';
 }catch(e){}}
 setInterval(tick,5000);tick();
