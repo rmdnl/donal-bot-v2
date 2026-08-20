@@ -38,7 +38,7 @@ risk:
   daily_loss_limit_pct: 3.0
   weekly_loss_limit_pct: 5.0
   max_drawdown_pct: 10.0
-  max_open_positions: 3
+  max_open_positions: 4
 
 kill_switch:
   enabled: true
