@@ -36,15 +36,16 @@ def svc(name):
 
 def tickers():
     try:
-        r = requests.get("https://api.binance.com/api/v3/ticker/24hr",
-                         params={"symbols": json.dumps(SYMBOLS)}, timeout=5)
-        return {x["symbol"]: x for x in r.json()}
+        r = requests.get("https://data-api.binance.vision/api/v3/ticker/24hr",
+                         timeout=5)
+        data = r.json()
+        return {x["symbol"]: x for x in data if x.get("symbol") in SYMBOLS} if isinstance(data, list) else {}
     except Exception:
         return {}
 
 def regime(sym):
     try:
-        r = requests.get("https://api.binance.com/api/v3/klines",
+        r = requests.get("https://data-api.binance.vision/api/v3/klines",
                          params={"symbol":sym,"interval":"4h","limit":120}, timeout=5)
         cols=["ot","open","high","low","close","volume","ct","qv","tr","tb","tq","ig"]
         df = pd.DataFrame(r.json(), columns=cols)
