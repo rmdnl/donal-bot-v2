@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import ClassVar
 
 from app.position.position_manager import PositionManager
 from app.storage.trade_journal import TradeJournal
@@ -15,7 +16,7 @@ class RecoveryResult:
 
 
 class RecoveryEngine:
-    TERMINAL = {
+    TERMINAL: ClassVar[set[str]] = {
         "FILLED",
         "CANCELED",
         "REJECTED",
