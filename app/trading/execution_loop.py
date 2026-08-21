@@ -107,7 +107,10 @@ class ExecutionTradingLoop:
 
         if (
             self.settlement is not None
-            and order.status == ExchangeOrderStatus.FILLED
+            and order.status in {
+                ExchangeOrderStatus.FILLED,
+                ExchangeOrderStatus.PARTIALLY_FILLED,
+            }
         ):
             self.settlement.settle(order)
 
