@@ -1,8 +1,12 @@
-import os, sys
+import os
+import sys
+
 import numpy as np
 import pandas as pd
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from strategies.regime_detector import detect_regime, Regime
+from strategies.regime_detector import Regime, detect_regime
+
 
 def _df(closes):
     closes = np.asarray(closes, dtype=float)

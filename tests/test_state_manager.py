@@ -1,6 +1,10 @@
-import os, sys, tempfile
+import os
+import sys
+import tempfile
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.state_manager import StateManager, BotState
+from core.state_manager import BotState, StateManager
+
 
 def test_roundtrip():
     with tempfile.TemporaryDirectory() as d:

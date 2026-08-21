@@ -1,7 +1,9 @@
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from risk.risk_manager import RiskManager
 from core.state_manager import BotState
+from risk.risk_manager import RiskManager
 
 CFG = {"risk_per_trade_pct": 1.0, "max_exposure_per_asset_pct": 7.5,
        "max_total_exposure_pct": 30.0, "daily_loss_limit_pct": 3.0,

@@ -1,7 +1,10 @@
-import os, sys
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from risk.breakeven_manager import BreakevenManager
 from core.state_manager import BotState
+from risk.breakeven_manager import BreakevenManager
+
 
 def test_trigger():
     bm = BreakevenManager(enabled=True, trigger_atr_multiplier=1.0)

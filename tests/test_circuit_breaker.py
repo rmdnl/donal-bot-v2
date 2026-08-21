@@ -1,6 +1,10 @@
-import os, sys, time
+import os
+import sys
+import time
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from risk.circuit_breaker import CircuitBreaker
+
 
 def test_opens_and_recovers():
     cb = CircuitBreaker(max_failures=3, cooldown_seconds=0.2)
