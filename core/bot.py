@@ -66,6 +66,10 @@ class Bot:
                         logger.warning(f"btc_regime_fail {e}")
                 for sym in self.cfg["trading"]["symbols"]:
                     self.evaluate_symbol(sym, all_states, equity, btc_regime)
+                logger.info(
+                    f"bot_cycle symbols={len(self.cfg['trading']['symbols'])} "
+                    f"equity={equity:.2f}"
+                )
                 if self.anomaly and not self.dry_run:
                     self.anomaly.periodic_check(all_states, equity)
             except Exception as e:
