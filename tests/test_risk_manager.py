@@ -1,25 +1,76 @@
-import os
-import sys
+from decimal import Decimal
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.state_manager import BotState
-from risk.risk_manager import RiskManager
+from app.risk.risk_manager import (
+    RiskConfig,
+    RiskConfigError,
+    RiskManager,
+)
 
-CFG = {"risk_per_trade_pct": 1.0, "max_exposure_per_asset_pct": 7.5,
-       "max_total_exposure_pct": 30.0, "daily_loss_limit_pct": 3.0,
-       "weekly_loss_limit_pct": 5.0, "max_drawdown_pct": 10.0, "max_open_positions": 3}
 
-def test_clamp_exposure():
-    rm = RiskManager(CFG); rm.initialize(1000)
-    d = rm.evaluate_entry("BTCUSDT", 1000, {}, 100, 95)
-    assert d.allowed
-    assert d.adjusted_quote <= 75.0 + 1e-6
+def test_approve_valid_trade() -> None:
+    manager = RiskManager(RiskConfig())
 
-def test_max_positions():
-    rm = RiskManager(CFG); rm.initialize(1000)
-    states = {f"S{i}": BotState(symbol=f"S{i}", in_position=True, entry_price=1.0, quantity=1.0) for i in range(3)}
-    assert not rm.evaluate_entry("NEW", 1000, states, 100, 95).allowed
+    decision = manager.evaluate(
+        quantity=Decimal("0.005"),
+        risk_amount=Decimal(5),
+        price=Decimal(100000),
+    )
 
-def test_daily_loss_veto():
-    rm = RiskManager(CFG); rm.initialize(1000)
-    assert not rm.evaluate_entry("X", 960, {}, 100, 95).allowed
+    assert decision.approved is True
+    assert decision.quantity == Decimal("0.005")
+    assert decision.risk_amount == Decimal(5)
+    assert decision.notional == Decimal(500)
+    assert decision.reason == "approved"
+
+
+def test_reject_excessive_quantity() -> None:
+    manager = RiskManager(RiskConfig())
+
+    decision = manager.evaluate(
+        quantity=Decimal("0.02"),
+        risk_amount=Decimal(5),
+        price=Decimal(100000),
+    )
+
+    assert decision.approved is False
+    assert "quantity" in decision.reason
+
+
+def test_reject_excessive_risk() -> None:
+    manager = RiskManager(RiskConfig())
+
+    decision = manager.evaluate(
+        quantity=Decimal("0.005"),
+        risk_amount=Decimal(11),
+        price=Decimal(100000),
+    )
+
+    assert decision.approved is False
+    assert "risk" in decision.reason
+
+
+def test_kill_switch_rejects_trade() -> None:
+    manager = RiskManager(RiskConfig())
+    manager.set_kill_switch(True)
+
+    decision = manager.evaluate(
+        quantity=Decimal("0.001"),
+        risk_amount=Decimal(1),
+        price=Decimal(100000),
+    )
+
+    assert decision.approved is False
+    assert "kill switch" in decision.reason
+
+
+def test_invalid_risk_config() -> None:
+    try:
+        RiskConfig(
+            max_risk_amount=Decimal(0),
+        )
+    except RiskConfigError:
+        pass
+    else:
+        raise AssertionError(
+            "Expected invalid risk configuration"
+        )
