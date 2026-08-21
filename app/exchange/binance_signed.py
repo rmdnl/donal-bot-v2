@@ -13,6 +13,7 @@ from app.config.settings import Settings
 class BinanceSignedClient:
     settings: Settings
     timeout: float = 10.0
+    time_offset_ms: int = 0
 
     def _signature(self, params: dict[str, str]) -> str:
         query = urlencode(params)
@@ -27,11 +28,14 @@ class BinanceSignedClient:
         params: dict[str, str] | None = None,
     ) -> dict[str, str]:
         result = dict(params or {})
-        result["timestamp"] = str(int(time.time() * 1000))
-        result["recvWindow"] = str(
-            self.settings.binance_recv_window
-        )
+
+        if "timestamp" not in result:
+            timestamp = int(time.time() * 1000) + self.time_offset_ms
+            result["timestamp"] = str(timestamp)
+
+        result["recvWindow"] = str(self.settings.binance_recv_window)
         result["signature"] = self._signature(result)
+
         return result
 
     def build_signed_request(
@@ -42,7 +46,6 @@ class BinanceSignedClient:
         self.settings.validate_credentials()
 
         signed = self._signed_params(params)
-
         url = f"{self.settings.binance_base_url}{path}"
 
         return url, signed
