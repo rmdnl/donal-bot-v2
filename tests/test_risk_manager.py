@@ -74,3 +74,65 @@ def test_invalid_risk_config() -> None:
         raise AssertionError(
             "Expected invalid risk configuration"
         )
+
+
+def test_daily_loss_limit() -> None:
+    manager = RiskManager(
+        RiskConfig(max_daily_loss=Decimal(10))
+    )
+
+    manager.record_realized_pnl(Decimal(-10))
+
+    decision = manager.evaluate(
+        Decimal("0.001"),
+        Decimal(1),
+        Decimal(100000),
+    )
+
+    assert decision.approved is False
+    assert "daily loss" in decision.reason
+
+
+def test_consecutive_loss_limit() -> None:
+    manager = RiskManager(
+        RiskConfig(max_consecutive_losses=2)
+    )
+
+    manager.record_realized_pnl(Decimal(-1))
+    manager.record_realized_pnl(Decimal(-1))
+
+    decision = manager.evaluate(
+        Decimal("0.001"),
+        Decimal(1),
+        Decimal(100000),
+    )
+
+    assert decision.approved is False
+    assert "consecutive" in decision.reason
+
+
+def test_profit_resets_consecutive_losses() -> None:
+    manager = RiskManager(
+        RiskConfig(max_consecutive_losses=2)
+    )
+
+    manager.record_realized_pnl(Decimal(-1))
+    manager.record_realized_pnl(Decimal(2))
+
+    decision = manager.evaluate(
+        Decimal("0.001"),
+        Decimal(1),
+        Decimal(100000),
+    )
+
+    assert decision.approved is True
+
+
+def test_daily_stats_reset() -> None:
+    manager = RiskManager(RiskConfig())
+
+    manager.record_realized_pnl(Decimal(-5))
+    manager.reset_daily_stats()
+
+    assert manager.daily_realized_loss == Decimal(0)
+    assert manager.consecutive_losses == 0
