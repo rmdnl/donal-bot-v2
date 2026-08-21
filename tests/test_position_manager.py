@@ -166,3 +166,42 @@ def test_negative_fee_rejected():
             Decimal(100000),
             fee=Decimal(-1),
         )
+
+
+def test_restore_long_position():
+    manager = PositionManager()
+
+    position = manager.restore(
+        symbol="BTCUSDT",
+        quantity=Decimal("0.008"),
+        average_entry=Decimal(100000),
+        realized_pnl=Decimal(3),
+    )
+
+    assert position.state == PositionState.LONG
+    assert position.symbol == "BTCUSDT"
+    assert position.quantity == Decimal("0.008")
+    assert position.average_entry == Decimal(100000)
+    assert position.realized_pnl == Decimal(3)
+
+
+def test_restore_rejects_empty_position():
+    manager = PositionManager()
+
+    with pytest.raises(PositionError):
+        manager.restore(
+            symbol="BTCUSDT",
+            quantity=Decimal(0),
+            average_entry=Decimal(100000),
+        )
+
+
+def test_restore_rejects_invalid_price():
+    manager = PositionManager()
+
+    with pytest.raises(PositionError):
+        manager.restore(
+            symbol="BTCUSDT",
+            quantity=Decimal("0.008"),
+            average_entry=Decimal(0),
+        )

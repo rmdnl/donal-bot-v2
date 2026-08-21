@@ -58,6 +58,41 @@ class PositionManager:
         )
         return self.position
 
+    def restore(
+        self,
+        symbol: str,
+        quantity: Decimal,
+        average_entry: Decimal,
+        realized_pnl: Decimal = Decimal(0),
+        total_fees: Decimal = Decimal(0),
+    ) -> Position:
+        if not symbol:
+            raise PositionError("symbol is required")
+
+        if quantity <= 0:
+            raise PositionError("quantity must be positive")
+
+        if average_entry <= 0:
+            raise PositionError(
+                "average_entry must be positive"
+            )
+
+        if total_fees < 0:
+            raise PositionError(
+                "total_fees cannot be negative"
+            )
+
+        self.position = Position(
+            state=PositionState.LONG,
+            symbol=symbol.upper(),
+            quantity=quantity,
+            average_entry=average_entry,
+            realized_pnl=realized_pnl,
+            total_fees=total_fees,
+        )
+
+        return self.position
+
     def exit(
         self,
         quantity: Decimal,
