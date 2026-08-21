@@ -34,6 +34,17 @@ class FakeGateway:
 
         return self.order
 
+    def place_market_sell(
+        self,
+        symbol,
+        quantity,
+        client_order_id,
+    ):
+        self.submit_calls += 1
+        if self.timeout_on_submit:
+            raise TimeoutError("network timeout")
+        return self.order
+
     def get_order(
         self,
         symbol,
@@ -174,3 +185,41 @@ def test_non_terminal_status():
     assert not ExecutionAdapter.is_terminal(
         ExchangeOrderStatus.PARTIALLY_FILLED
     )
+
+
+def test_successful_sell_submission():
+    gateway = FakeGateway(order=make_order())
+    adapter = ExecutionAdapter(gateway)
+
+    result = adapter.submit_sell(
+        symbol="BTCUSDT",
+        quantity=0.01,
+        client_order_id="donal-BTCUSDT-exit-001",
+    )
+
+    assert result.status == ExchangeOrderStatus.FILLED
+    assert gateway.submit_calls == 1
+
+
+def test_sell_rejects_invalid_quantity():
+    gateway = FakeGateway()
+    adapter = ExecutionAdapter(gateway)
+
+    with pytest.raises(ExecutionError):
+        adapter.submit_sell(
+            symbol="BTCUSDT",
+            quantity=0,
+            client_order_id="donal-exit-001",
+        )
+
+
+def test_sell_rejects_empty_client_order_id():
+    gateway = FakeGateway()
+    adapter = ExecutionAdapter(gateway)
+
+    with pytest.raises(ExecutionError):
+        adapter.submit_sell(
+            symbol="BTCUSDT",
+            quantity=0.01,
+            client_order_id="",
+        )

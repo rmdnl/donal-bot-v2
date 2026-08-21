@@ -38,6 +38,14 @@ class ExchangeGateway(Protocol):
     ) -> ExchangeOrder:
         ...
 
+    def place_market_sell(
+        self,
+        symbol: str,
+        quantity: float,
+        client_order_id: str,
+    ) -> ExchangeOrder:
+        ...
+
     def get_order(
         self,
         symbol: str,
@@ -56,17 +64,30 @@ class ExecutionAdapter:
         quantity: float,
         client_order_id: str,
     ) -> ExchangeOrder:
-        if not symbol:
-            raise ExecutionError("symbol is required")
-
-        if quantity <= 0:
-            raise ExecutionError("quantity must be positive")
-
-        if not client_order_id:
-            raise ExecutionError("client_order_id is required")
+        self._validate(symbol, quantity, client_order_id)
 
         try:
             return self.gateway.place_market_buy(
+                symbol=symbol,
+                quantity=quantity,
+                client_order_id=client_order_id,
+            )
+        except TimeoutError:
+            return self.reconcile(
+                symbol=symbol,
+                client_order_id=client_order_id,
+            )
+
+    def submit_sell(
+        self,
+        symbol: str,
+        quantity: float,
+        client_order_id: str,
+    ) -> ExchangeOrder:
+        self._validate(symbol, quantity, client_order_id)
+
+        try:
+            return self.gateway.place_market_sell(
                 symbol=symbol,
                 quantity=quantity,
                 client_order_id=client_order_id,
@@ -93,7 +114,24 @@ class ExecutionAdapter:
             ) from exc
 
     @staticmethod
-    def is_terminal(status: ExchangeOrderStatus) -> bool:
+    def _validate(
+        symbol: str,
+        quantity: float,
+        client_order_id: str,
+    ) -> None:
+        if not symbol:
+            raise ExecutionError("symbol is required")
+
+        if quantity <= 0:
+            raise ExecutionError("quantity must be positive")
+
+        if not client_order_id:
+            raise ExecutionError("client_order_id is required")
+
+    @staticmethod
+    def is_terminal(
+        status: ExchangeOrderStatus,
+    ) -> bool:
         return status in {
             ExchangeOrderStatus.FILLED,
             ExchangeOrderStatus.CANCELED,
