@@ -133,3 +133,36 @@ def test_full_exit_preserves_realized_pnl():
     assert position.state == PositionState.FLAT
     assert position.quantity == Decimal(0)
     assert position.realized_pnl == Decimal(10)
+
+
+def test_entry_fee_reduces_realized_pnl():
+    manager = PositionManager()
+
+    manager.enter(
+        "BTCUSDT",
+        Decimal("0.01"),
+        Decimal(100000),
+        fee=Decimal(1),
+    )
+
+    position = manager.exit(
+        Decimal("0.01"),
+        Decimal(101000),
+        fee=Decimal(1),
+    )
+
+    assert position.state == PositionState.FLAT
+    assert position.realized_pnl == Decimal(8)
+    assert position.total_fees == Decimal(2)
+
+
+def test_negative_fee_rejected():
+    manager = PositionManager()
+
+    with pytest.raises(PositionError):
+        manager.enter(
+            "BTCUSDT",
+            Decimal("0.01"),
+            Decimal(100000),
+            fee=Decimal(-1),
+        )
