@@ -15,13 +15,19 @@ class BinanceAPIError(RuntimeError):
 @dataclass(frozen=True)
 class BinanceClient:
     base_url: str = "https://api.binance.com"
+    testnet: bool = False
     timeout: float = 10.0
     max_retries: int = 3
     backoff: float = 0.5
 
     def get(self, path: str, params: dict | None = None) -> dict | list:
         query = urlencode(params or {})
-        url = f"{self.base_url}{path}"
+        base_url = (
+            "https://testnet.binance.vision"
+            if self.testnet
+            else self.base_url
+        )
+        url = f"{base_url}{path}"
         if query:
             url = f"{url}?{query}"
 
