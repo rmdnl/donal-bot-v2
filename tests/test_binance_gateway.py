@@ -33,7 +33,9 @@ def test_sync_time() -> None:
 
 
 def test_account_requires_credentials() -> None:
-    gateway = BinanceGateway(Settings())
+    gateway = BinanceGateway(
+        Settings(binance_api_key="", binance_api_secret="")
+    )
 
     try:
         gateway.account()
