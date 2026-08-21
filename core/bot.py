@@ -1,6 +1,6 @@
 """Main trading loop - orchestrates regime, strategies, risk, execution, sync."""
 import os
-import time, logging
+import time, logging, threading
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_DOWN
 
@@ -26,6 +26,7 @@ class Bot:
         self.breaker, self.breakeven, self.notifier = breaker, breakeven, notifier
         self.cfg, self.dry_run = cfg, dry_run
         self.running = True
+        self._stop_event = threading.Event()
         self.is_paused = False
         self.donal = DonalStrategy(cfg["strategy"]["donal"])
         self.mr = MeanReversionStrategy(cfg["strategy"]["mean_reversion"])
@@ -69,10 +70,12 @@ class Bot:
                     self.anomaly.periodic_check(all_states, equity)
             except Exception as e:
                 logger.error(f"loop_error: {e}")
-            time.sleep(interval)
+            if self._stop_event.wait(interval):
+                break
 
     def stop(self):
         self.running = False
+        self._stop_event.set()
 
     # ---------------- EVALUASI PER SYMBOL ----------------
     def evaluate_symbol(self, symbol, all_states, equity, btc_regime=None):
