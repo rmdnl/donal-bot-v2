@@ -47,9 +47,11 @@ class FillReconciler:
                 "symbol is required"
             )
 
-        if fill.side.upper() != "BUY":
+        side = fill.side.upper()
+
+        if side not in {"BUY", "SELL"}:
             raise FillReconciliationError(
-                "only BUY fills are supported"
+                "unsupported fill side"
             )
 
         if fill.status != "FILLED":
@@ -93,19 +95,62 @@ class FillReconciler:
                 "inconsistent position"
             )
 
+        if side == "BUY":
+            if (
+                self.positions.position.state
+                != PositionState.FLAT
+            ):
+                raise FillReconciliationError(
+                    "position is not flat"
+                )
+
+            self.journal.record(
+                JournalEntry(
+                    client_order_id=fill.client_order_id,
+                    symbol=fill.symbol.upper(),
+                    side=side,
+                    status=fill.status,
+                    quantity=str(fill.quantity),
+                    executed_quantity=str(
+                        fill.executed_quantity
+                    ),
+                )
+            )
+
+            return self.positions.enter(
+                symbol=fill.symbol,
+                quantity=fill.executed_quantity,
+                price=fill.price,
+                fee=fill.fee,
+            )
+
+        # SELL
+        if self.positions.position.state != PositionState.LONG:
+            raise FillReconciliationError(
+                "cannot sell without a long position"
+            )
+
         if (
-            self.positions.position.state
-            != PositionState.FLAT
+            self.positions.position.symbol
+            != fill.symbol.upper()
         ):
             raise FillReconciliationError(
-                "position is not flat"
+                "sell symbol does not match position"
+            )
+
+        if (
+            fill.executed_quantity
+            > self.positions.position.quantity
+        ):
+            raise FillReconciliationError(
+                "sell quantity exceeds position"
             )
 
         self.journal.record(
             JournalEntry(
                 client_order_id=fill.client_order_id,
                 symbol=fill.symbol.upper(),
-                side=fill.side.upper(),
+                side=side,
                 status=fill.status,
                 quantity=str(fill.quantity),
                 executed_quantity=str(
@@ -114,8 +159,7 @@ class FillReconciler:
             )
         )
 
-        return self.positions.enter(
-            symbol=fill.symbol,
+        return self.positions.exit(
             quantity=fill.executed_quantity,
             price=fill.price,
             fee=fill.fee,
