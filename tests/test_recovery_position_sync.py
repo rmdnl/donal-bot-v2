@@ -53,3 +53,38 @@ def test_recovery_restores_filled_position(tmp_path):
 
     assert manager.position.state == PositionState.LONG
     assert manager.position.quantity == Decimal("0.008")
+
+
+def test_recovery_filled_buy_restores_position(tmp_path):
+    journal = TradeJournal(str(tmp_path / "trades.db"))
+
+    journal.record(
+        JournalEntry(
+            "DNL-005",
+            "BTCUSDT",
+            "BUY",
+            "NEW",
+            "0.01",
+            "0",
+        )
+    )
+
+    manager = PositionManager()
+
+    gateway = FakeGateway({
+        "status": "FILLED",
+        "executedQty": "0.008",
+        "cummulativeQuoteQty": "800",
+    })
+
+    result = RecoveryEngine(
+        journal,
+        gateway,
+        manager,
+    ).recover()
+
+    assert result.reconciled == 1
+    assert manager.position.state == PositionState.LONG
+    assert manager.position.symbol == "BTCUSDT"
+    assert manager.position.quantity == Decimal("0.008")
+    assert manager.position.average_entry == Decimal(100000)
