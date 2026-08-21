@@ -216,3 +216,89 @@ def test_duplicate_sell_fill_is_idempotent(tmp_path):
     entry = journal.get("DNL-SELL-IDEMPOTENT")
     assert entry is not None
     assert entry.status == "FILLED"
+
+
+def test_partial_sell_keeps_remaining_long_and_accounts_fee(tmp_path):
+    journal = TradeJournal(
+        str(tmp_path / "trades.db")
+    )
+    positions = PositionManager()
+    reconciler = FillReconciler(
+        journal,
+        positions,
+    )
+
+    buy = make_fill("DNL-BUY-PARTIAL")
+    reconciler.reconcile(buy)
+
+    sell = Fill(
+        client_order_id="DNL-SELL-PARTIAL-001",
+        symbol="BTCUSDT",
+        side="SELL",
+        quantity=Decimal("0.00004"),
+        executed_quantity=Decimal("0.00004"),
+        price=Decimal(78000),
+        fee=Decimal("0.00312"),
+        status="FILLED",
+    )
+
+    result = reconciler.reconcile(sell)
+
+    assert result.state == PositionState.LONG
+    assert result.symbol == "BTCUSDT"
+    assert result.quantity == Decimal("0.00003")
+    assert result.average_entry == Decimal("77857.73")
+    assert result.total_fees == (
+        Decimal("0.00000007")
+        + Decimal("0.00312")
+    )
+
+
+def test_second_partial_sell_closes_remaining_position(tmp_path):
+    journal = TradeJournal(
+        str(tmp_path / "trades.db")
+    )
+    positions = PositionManager()
+    reconciler = FillReconciler(
+        journal,
+        positions,
+    )
+
+    reconciler.reconcile(
+        make_fill("DNL-BUY-PARTIAL-002")
+    )
+
+    first_sell = Fill(
+        client_order_id="DNL-SELL-PARTIAL-002-A",
+        symbol="BTCUSDT",
+        side="SELL",
+        quantity=Decimal("0.00004"),
+        executed_quantity=Decimal("0.00004"),
+        price=Decimal(78000),
+        fee=Decimal("0.00312"),
+        status="FILLED",
+    )
+
+    reconciler.reconcile(first_sell)
+
+    second_sell = Fill(
+        client_order_id="DNL-SELL-PARTIAL-002-B",
+        symbol="BTCUSDT",
+        side="SELL",
+        quantity=Decimal("0.00003"),
+        executed_quantity=Decimal("0.00003"),
+        price=Decimal(78100),
+        fee=Decimal("0.002343"),
+        status="FILLED",
+    )
+
+    result = reconciler.reconcile(second_sell)
+
+    assert result.state == PositionState.FLAT
+    assert result.quantity == Decimal(0)
+    assert result.symbol == ""
+    assert result.total_fees == (
+        Decimal("0.00000007")
+        + Decimal("0.00312")
+        + Decimal("0.002343")
+    )
