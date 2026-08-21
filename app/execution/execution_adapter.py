@@ -27,6 +27,16 @@ class ExchangeOrder:
     status: ExchangeOrderStatus
     requested_quantity: float
     executed_quantity: float
+    executed_quote_quantity: float = 0.0
+
+    @property
+    def average_fill_price(self) -> float:
+        if self.executed_quantity <= 0:
+            return 0.0
+        return (
+            self.executed_quote_quantity
+            / self.executed_quantity
+        )
 
 
 class ExchangeGateway(Protocol):

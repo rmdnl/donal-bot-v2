@@ -223,3 +223,30 @@ def test_sell_rejects_empty_client_order_id():
             quantity=0.01,
             client_order_id="",
         )
+
+
+def test_average_fill_price_uses_actual_execution():
+    order = ExchangeOrder(
+        client_order_id="donal-BTCUSDT-002",
+        exchange_order_id="12346",
+        symbol="BTCUSDT",
+        status=ExchangeOrderStatus.FILLED,
+        requested_quantity=0.01,
+        executed_quantity=0.008,
+        executed_quote_quantity=800.0,
+    )
+
+    assert order.average_fill_price == 100000.0
+
+
+def test_zero_execution_price_is_safe():
+    order = ExchangeOrder(
+        client_order_id="donal-BTCUSDT-003",
+        exchange_order_id="12347",
+        symbol="BTCUSDT",
+        status=ExchangeOrderStatus.NEW,
+        requested_quantity=0.01,
+        executed_quantity=0,
+    )
+
+    assert order.average_fill_price == 0.0
