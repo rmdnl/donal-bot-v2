@@ -82,17 +82,20 @@ class FillReconciler:
             existing is not None
             and existing.status == "FILLED"
         ):
-            if (
-                self.positions.position.symbol
-                == fill.symbol.upper()
-                and self.positions.position.quantity
-                == fill.executed_quantity
-            ):
+            same_fill = (
+                existing.symbol == fill.symbol.upper()
+                and existing.side == side
+                and existing.quantity == str(fill.quantity)
+                and existing.executed_quantity
+                == str(fill.executed_quantity)
+            )
+
+            if same_fill:
                 return self.positions.position
 
             raise FillReconciliationError(
                 "filled order already exists with "
-                "inconsistent position"
+                "inconsistent fill"
             )
 
         if side == "BUY":

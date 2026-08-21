@@ -174,3 +174,45 @@ def test_sell_fill_closes_long_position_and_updates_journal(tmp_path):
     assert sell_entry.side == "SELL"
     assert sell_entry.status == "FILLED"
     assert sell_entry.executed_quantity == "0.00007"
+
+
+def test_duplicate_sell_fill_is_idempotent(tmp_path):
+    journal = TradeJournal(
+        str(tmp_path / "trades.db")
+    )
+    positions = PositionManager()
+    reconciler = FillReconciler(
+        journal,
+        positions,
+    )
+
+    buy = make_fill("DNL-BUY-IDEMPOTENT")
+    reconciler.reconcile(buy)
+
+    sell = Fill(
+        client_order_id="DNL-SELL-IDEMPOTENT",
+        symbol="BTCUSDT",
+        side="SELL",
+        quantity=Decimal("0.00007"),
+        executed_quantity=Decimal("0.00007"),
+        price=Decimal(78000),
+        fee=Decimal("0.00546"),
+        status="FILLED",
+    )
+
+    first = reconciler.reconcile(sell)
+
+    pnl_after_first = first.realized_pnl
+    fees_after_first = first.total_fees
+
+    second = reconciler.reconcile(sell)
+
+    assert second == first
+    assert second.state == PositionState.FLAT
+    assert second.quantity == Decimal(0)
+    assert second.realized_pnl == pnl_after_first
+    assert second.total_fees == fees_after_first
+
+    entry = journal.get("DNL-SELL-IDEMPOTENT")
+    assert entry is not None
+    assert entry.status == "FILLED"
