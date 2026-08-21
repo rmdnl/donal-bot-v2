@@ -83,3 +83,58 @@ def test_zero_executed_quantity_rejected():
 
     with pytest.raises(BinanceFillAdapterError):
         BinanceFillAdapter().from_order(order)
+
+
+def test_sell_fee_in_quote_asset_is_not_multiplied():
+    order = {
+        **ORDER,
+        "side": "SELL",
+        "fills": [
+            {
+                "price": "77857.73",
+                "qty": "0.00007000",
+                "commission": "0.00545004",
+                "commissionAsset": "USDT",
+            }
+        ],
+    }
+
+    fill = BinanceFillAdapter().from_order(order)
+
+    assert fill.fee == Decimal("0.00545004")
+
+
+def test_base_asset_fee_is_converted_to_quote():
+    order = {
+        **ORDER,
+        "side": "SELL",
+        "fills": [
+            {
+                "price": "77857.73",
+                "qty": "0.00007000",
+                "commission": "0.00000007",
+                "commissionAsset": "BTC",
+            }
+        ],
+    }
+
+    fill = BinanceFillAdapter().from_order(order)
+
+    assert fill.fee == Decimal("0.0054500411")
+
+
+def test_unsupported_fee_asset_is_rejected():
+    order = {
+        **ORDER,
+        "fills": [
+            {
+                "price": "77857.73",
+                "qty": "0.00007000",
+                "commission": "0.01",
+                "commissionAsset": "BNB",
+            }
+        ],
+    }
+
+    with pytest.raises(BinanceFillAdapterError):
+        BinanceFillAdapter().from_order(order)

@@ -91,7 +91,21 @@ class BinanceFillAdapter:
                     "invalid commission value"
                 )
 
-            fee_quote += commission * fill_price
+            commission_asset = str(
+                fill.get("commissionAsset", "")
+            ).upper()
+
+            quote_asset = symbol[-4:]
+
+            if commission_asset == quote_asset:
+                fee_quote += commission
+            elif commission_asset == symbol[:-4]:
+                fee_quote += commission * fill_price
+            elif commission_asset:
+                raise BinanceFillAdapterError(
+                    "unsupported commission asset: "
+                    f"{commission_asset}"
+                )
 
         return Fill(
             client_order_id=client_order_id,
