@@ -68,6 +68,32 @@ class TradeJournal:
         finally:
             connection.close()
 
+    def pending(self) -> list[JournalEntry]:
+        connection = sqlite3.connect(self.path)
+        try:
+            rows = connection.execute(
+                """
+                SELECT
+                    client_order_id,
+                    symbol,
+                    side,
+                    status,
+                    quantity,
+                    executed_quantity
+                FROM trades
+                WHERE status NOT IN (
+                    'FILLED',
+                    'CANCELED',
+                    'REJECTED',
+                    'EXPIRED'
+                )
+                """
+            ).fetchall()
+        finally:
+            connection.close()
+
+        return [JournalEntry(*row) for row in rows]
+
     def get(self, client_order_id: str) -> JournalEntry | None:
         connection = sqlite3.connect(self.path)
         try:
