@@ -70,7 +70,31 @@ class CandleSignalPipeline:
             for item in snapshots
         ]
 
-        return self.pipeline.select(
+        candidate = self.pipeline.select(
             market_snapshots,
             indicators,
+        )
+
+        if candidate is None:
+            return None
+
+        candle_by_symbol = {
+            candle_set.symbol.upper(): candle_set
+            for candle_set in candle_sets
+        }
+        selected = candle_by_symbol.get(
+            candidate.symbol.upper()
+        )
+
+        if selected is None or not selected.candles:
+            return candidate
+
+        signal_id = str(
+            selected.candles[-1].open_time
+        )
+
+        return Candidate(
+            symbol=candidate.symbol,
+            score=candidate.score,
+            signal_id=signal_id,
         )

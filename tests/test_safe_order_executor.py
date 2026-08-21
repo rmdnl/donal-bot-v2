@@ -91,3 +91,54 @@ def test_valid_live_order_reaches_exchange():
         quantity="0.00123",
         client_order_id="DNL-003",
     )
+
+
+def test_valid_live_sell_order_reaches_exchange():
+    client = Mock(spec=BinanceOrderClient)
+    client.place_market_sell.return_value = {
+        "symbol": "BTCUSDT",
+        "status": "FILLED",
+        "orderId": 456,
+    }
+
+    executor = SafeOrderExecutor(
+        client,
+        dry_run=False,
+    )
+
+    result = executor.sell(
+        symbol="BTCUSDT",
+        quantity=Decimal("0.001239"),
+        price=Decimal(100000),
+        rules=RULES,
+        client_order_id="DNL-SELL-001",
+    )
+
+    assert result.quantity == Decimal("0.00123")
+    assert result.order["status"] == "FILLED"
+
+    client.place_market_sell.assert_called_once_with(
+        symbol="BTCUSDT",
+        quantity="0.00123",
+        client_order_id="DNL-SELL-001",
+    )
+
+
+def test_invalid_sell_never_reaches_exchange():
+    client = Mock(spec=BinanceOrderClient)
+
+    executor = SafeOrderExecutor(
+        client,
+        dry_run=False,
+    )
+
+    with pytest.raises(SafeOrderError):
+        executor.sell(
+            symbol="BTCUSDT",
+            quantity=Decimal("0.00001"),
+            price=Decimal(100000),
+            rules=RULES,
+            client_order_id="DNL-SELL-002",
+        )
+
+    client.place_market_sell.assert_not_called()

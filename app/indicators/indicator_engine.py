@@ -12,6 +12,7 @@ class IndicatorError(ValueError):
 class Candle:
     close: Decimal
     volume: Decimal
+    open_time: int = 0
 
 
 @dataclass(frozen=True)

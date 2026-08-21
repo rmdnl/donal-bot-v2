@@ -197,3 +197,56 @@ def test_duplicate_partial_sell_does_not_reduce_position_twice(tmp_path):
 
 
 
+
+
+def test_restart_recovery_rebuilds_flat_position_after_filled_sell(
+    tmp_path,
+):
+    db_path = str(tmp_path / "trades.db")
+
+    journal = TradeJournal(db_path)
+
+    journal.record(
+        JournalEntry(
+            "DNL-BUY-RESTART",
+            "BTCUSDT",
+            "BUY",
+            "FILLED",
+            "0.00007",
+            "0.00007",
+        )
+    )
+
+    journal.record(
+        JournalEntry(
+            "DNL-SELL-RESTART",
+            "BTCUSDT",
+            "SELL",
+            "FILLED",
+            "0.00007",
+            "0.00007",
+        )
+    )
+
+    # Simulate bot restart:
+    # new PositionManager, no in-memory position.
+    positions = PositionManager()
+    reconciler = FillReconciler(
+        journal,
+        positions,
+    )
+    gateway = FakeGateway()
+
+    result = RecoveryEngine(
+        journal,
+        gateway,
+        reconciler,
+    ).recover()
+
+    assert result.checked == 0
+    assert result.reconciled == 0
+    assert result.failed == 0
+
+    assert positions.position.state == PositionState.FLAT
+    assert positions.position.quantity == Decimal(0)
+    assert gateway.calls == []

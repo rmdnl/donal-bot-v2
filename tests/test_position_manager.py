@@ -205,3 +205,28 @@ def test_restore_rejects_invalid_price():
             quantity=Decimal("0.008"),
             average_entry=Decimal(0),
         )
+
+def test_full_exit_with_fee_closes_position_safely():
+    manager = PositionManager()
+
+    manager.enter(
+        "BTCUSDT",
+        Decimal("0.00007"),
+        Decimal("77857.73"),
+        fee=Decimal("0.00000007"),
+    )
+
+    position = manager.exit(
+        Decimal("0.00007"),
+        Decimal("77814.33"),
+        fee=Decimal("0.00544700"),
+    )
+
+    assert position.state == PositionState.FLAT
+    assert position.quantity == Decimal(0)
+    assert position.average_entry == Decimal(0)
+    assert position.total_fees == (
+        Decimal("0.00000007")
+        + Decimal("0.00544700")
+    )
+    assert position.realized_pnl < Decimal(0)

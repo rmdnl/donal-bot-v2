@@ -27,6 +27,13 @@ class Fill:
     status: str
 
 
+def _decimal_text(value: Decimal) -> str:
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
+
+
 class FillReconciler:
     def __init__(
         self,
@@ -59,9 +66,19 @@ class FillReconciler:
                 "only FILLED orders can be reconciled"
             )
 
+        if fill.quantity <= 0:
+            raise FillReconciliationError(
+                "quantity must be positive"
+            )
+
         if fill.executed_quantity <= 0:
             raise FillReconciliationError(
                 "executed quantity must be positive"
+            )
+
+        if fill.executed_quantity > fill.quantity:
+            raise FillReconciliationError(
+                "executed quantity exceeds order quantity"
             )
 
         if fill.price <= 0:
@@ -74,96 +91,211 @@ class FillReconciler:
                 "fee cannot be negative"
             )
 
-        existing = self.journal.get(
-            fill.client_order_id
+        symbol = fill.symbol.upper()
+        existing = self.journal.get(fill.client_order_id)
+
+        previous_quantity = Decimal(0)
+        previous_fee = Decimal(0)
+
+        if existing is not None:
+            if existing.symbol != symbol:
+                raise FillReconciliationError(
+                    "existing fill symbol mismatch"
+                )
+
+            if existing.side != side:
+                raise FillReconciliationError(
+                    "existing fill side mismatch"
+                )
+
+            if existing.quantity != str(fill.quantity):
+                raise FillReconciliationError(
+                    "existing fill quantity mismatch"
+                )
+
+            # NEW/PENDING journal entries have not been
+            # settled yet. The exchange response is the
+            # first real execution, so treat the previous
+            # executed quantity and fee as zero.
+            if existing.status == "FILLED":
+                previous_quantity = Decimal(
+                    existing.executed_quantity
+                )
+                previous_fee = Decimal(existing.fee or "0")
+
+            if fill.executed_quantity < previous_quantity:
+                raise FillReconciliationError(
+                    "executed quantity moved backwards"
+                )
+
+            if fill.fee < previous_fee:
+                raise FillReconciliationError(
+                    "fee moved backwards"
+                )
+
+        quantity_delta = (
+            fill.executed_quantity - previous_quantity
         )
 
-        if (
-            existing is not None
-            and existing.status == "FILLED"
-        ):
-            same_fill = (
-                existing.symbol == fill.symbol.upper()
-                and existing.side == side
-                and existing.quantity == str(fill.quantity)
-                and existing.executed_quantity
-                == str(fill.executed_quantity)
+        fee_delta = fill.fee - previous_fee
+
+        # Exact replay. Nothing new to apply.
+        if quantity_delta == 0 and fee_delta == 0:
+            return self.positions.position
+
+        if quantity_delta < 0:
+            raise FillReconciliationError(
+                "negative fill delta"
             )
 
-            if same_fill:
-                return self.positions.position
-
+        if fee_delta < 0:
             raise FillReconciliationError(
-                "filled order already exists with "
-                "inconsistent fill"
+                "negative fee delta"
+            )
+
+        if quantity_delta == 0:
+            # Fee-only update is valid for accounting,
+            # but cannot be attached to a zero execution delta
+            # without changing position economics unexpectedly.
+            raise FillReconciliationError(
+                "fee changed without new executed quantity"
             )
 
         if side == "BUY":
-            if (
-                self.positions.position.state
-                != PositionState.FLAT
-            ):
+            return self._reconcile_buy(
+                fill=fill,
+                symbol=symbol,
+                quantity_delta=quantity_delta,
+                fee_delta=fee_delta,
+                existing=existing,
+            )
+
+        return self._reconcile_sell(
+            fill=fill,
+            symbol=symbol,
+            quantity_delta=quantity_delta,
+            fee_delta=fee_delta,
+            existing=existing,
+        )
+
+    def _reconcile_buy(
+        self,
+        *,
+        fill: Fill,
+        symbol: str,
+        quantity_delta: Decimal,
+        fee_delta: Decimal,
+        existing: JournalEntry | None,
+    ) -> Position:
+        has_applied_fill = (
+            existing is not None
+            and existing.status == "FILLED"
+        )
+
+        if not has_applied_fill:
+            if self.positions.position.state != PositionState.FLAT:
                 raise FillReconciliationError(
                     "position is not flat"
                 )
 
-            self.journal.record(
-                JournalEntry(
-                    client_order_id=fill.client_order_id,
-                    symbol=fill.symbol.upper(),
-                    side=side,
-                    status=fill.status,
-                    quantity=str(fill.quantity),
-                    executed_quantity=str(
-                        fill.executed_quantity
-                    ),
-                )
-            )
-
-            return self.positions.enter(
-                symbol=fill.symbol,
-                quantity=fill.executed_quantity,
+            position = self.positions.enter(
+                symbol=symbol,
+                quantity=quantity_delta,
                 price=fill.price,
-                fee=fill.fee,
+                fee=fee_delta,
+            )
+        else:
+            if self.positions.position.state != PositionState.LONG:
+                raise FillReconciliationError(
+                    "position is not long during buy fill update"
+                )
+
+            if self.positions.position.symbol != symbol:
+                raise FillReconciliationError(
+                    "buy symbol does not match position"
+                )
+
+            old = self.positions.position
+            new_quantity = old.quantity + quantity_delta
+
+            # Weighted average entry for cumulative BUY fills.
+            average_entry = (
+                old.average_entry * old.quantity
+                + fill.price * quantity_delta
+            ) / new_quantity
+
+            self.positions.position = Position(
+                state=PositionState.LONG,
+                symbol=symbol,
+                quantity=new_quantity,
+                average_entry=average_entry,
+                realized_pnl=old.realized_pnl - fee_delta,
+                total_fees=old.total_fees + fee_delta,
             )
 
-        # SELL
+            position = self.positions.position
+
+        self._record(
+            fill=fill,
+            symbol=symbol,
+        )
+
+        return position
+
+    def _reconcile_sell(
+        self,
+        *,
+        fill: Fill,
+        symbol: str,
+        quantity_delta: Decimal,
+        fee_delta: Decimal,
+        existing: JournalEntry | None,
+    ) -> Position:
         if self.positions.position.state != PositionState.LONG:
             raise FillReconciliationError(
                 "cannot sell without a long position"
             )
 
-        if (
-            self.positions.position.symbol
-            != fill.symbol.upper()
-        ):
+        if self.positions.position.symbol != symbol:
             raise FillReconciliationError(
                 "sell symbol does not match position"
             )
 
-        if (
-            fill.executed_quantity
-            > self.positions.position.quantity
-        ):
+        if quantity_delta > self.positions.position.quantity:
             raise FillReconciliationError(
                 "sell quantity exceeds position"
             )
 
+        position = self.positions.exit(
+            quantity=quantity_delta,
+            price=fill.price,
+            fee=fee_delta,
+        )
+
+        self._record(
+            fill=fill,
+            symbol=symbol,
+        )
+
+        return position
+
+    def _record(
+        self,
+        *,
+        fill: Fill,
+        symbol: str,
+    ) -> None:
         self.journal.record(
             JournalEntry(
                 client_order_id=fill.client_order_id,
-                symbol=fill.symbol.upper(),
-                side=side,
+                symbol=symbol,
+                side=fill.side.upper(),
                 status=fill.status,
-                quantity=str(fill.quantity),
-                executed_quantity=str(
-                    fill.executed_quantity
+                quantity=format(fill.quantity, "f"),
+                executed_quantity=format(
+                    fill.executed_quantity, "f"
                 ),
+                price=_decimal_text(fill.price),
+                fee=format(fill.fee, "f"),
             )
-        )
-
-        return self.positions.exit(
-            quantity=fill.executed_quantity,
-            price=fill.price,
-            fee=fill.fee,
         )

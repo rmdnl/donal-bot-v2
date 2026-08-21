@@ -34,6 +34,44 @@ class SafeOrderExecutor:
         self.validator = validator or OrderValidator()
         self.dry_run = dry_run
 
+    def sell(
+        self,
+        symbol: str,
+        quantity: Decimal,
+        price: Decimal,
+        rules: SymbolRules,
+        client_order_id: str,
+    ) -> SafeOrderResult:
+        try:
+            validated = self.validator.validate(
+                quantity=quantity,
+                price=price,
+                rules=rules,
+            )
+        except OrderValidationError as exc:
+            raise SafeOrderError(str(exc)) from exc
+
+        if self.dry_run:
+            return SafeOrderResult(
+                symbol=symbol.upper(),
+                quantity=validated.quantity,
+                notional=validated.notional,
+                order=None,
+            )
+
+        order = self.order_client.place_market_sell(
+            symbol=symbol.upper(),
+            quantity=str(validated.quantity),
+            client_order_id=client_order_id,
+        )
+
+        return SafeOrderResult(
+            symbol=symbol.upper(),
+            quantity=validated.quantity,
+            notional=validated.notional,
+            order=order,
+        )
+
     def buy(
         self,
         symbol: str,

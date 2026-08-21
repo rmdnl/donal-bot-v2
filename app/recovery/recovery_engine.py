@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 from app.position.binance_fill_adapter import (
     BinanceFillAdapter,
@@ -10,7 +11,10 @@ from app.position.fill_reconciler import (
     FillReconciler,
     FillReconciliationError,
 )
-from app.position.position_manager import PositionManager
+from app.position.position_manager import (
+    PositionManager,
+    PositionState,
+)
 from app.storage.trade_journal import TradeJournal
 
 
@@ -128,6 +132,56 @@ class RecoveryEngine:
 
         return normalized
 
+    def rebuild_position(self) -> None:
+        # Rebuild is idempotent for an already reconstructed
+        # PositionManager. Do not replay the journal twice.
+        if self.reconciler.positions.position.state != PositionState.FLAT:
+            return
+
+        entries = self.journal.entries()
+
+        for entry in entries:
+            if entry.status != "FILLED":
+                continue
+
+            side = entry.side.upper()
+
+            if side == "BUY":
+                if (
+                    self.reconciler.positions.position.state
+                    != PositionState.FLAT
+                ):
+                    raise FillReconciliationError(
+                        "cannot replay BUY on non-flat position"
+                    )
+
+                self.reconciler.positions.enter(
+                    symbol=entry.symbol,
+                    quantity=Decimal(entry.executed_quantity),
+                    price=Decimal(entry.price),
+                    fee=Decimal(entry.fee),
+                )
+
+            elif side == "SELL":
+                if (
+                    self.reconciler.positions.position.state
+                    != PositionState.LONG
+                ):
+                    raise FillReconciliationError(
+                        "cannot replay SELL without long position"
+                    )
+
+                self.reconciler.positions.exit(
+                    quantity=Decimal(entry.executed_quantity),
+                    price=Decimal(entry.price),
+                    fee=Decimal(entry.fee),
+                )
+
+            else:
+                raise FillReconciliationError(
+                    f"unsupported journal side: {entry.side}"
+                )
+
     def recover(self) -> RecoveryResult:
         entries = self.journal.pending()
 
@@ -177,7 +231,7 @@ class RecoveryEngine:
             except (
                 FillReconciliationError,
                 BinanceFillAdapterError,
-            ):
+            ) as exc:
                 failed += 1
 
         return RecoveryResult(

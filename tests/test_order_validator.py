@@ -61,3 +61,33 @@ def test_zero_price_rejected():
             price=Decimal(0),
             rules=RULES,
         )
+
+
+def test_quantity_rounding_never_rounds_up():
+    result = OrderValidator().validate(
+        quantity=Decimal("0.010009"),
+        price=Decimal(100000),
+        rules=RULES,
+    )
+
+    assert result.quantity == Decimal("0.01000")
+    assert result.quantity <= Decimal("0.010009")
+
+
+def test_quantity_exact_step_is_preserved():
+    result = OrderValidator().validate(
+        quantity=Decimal("0.01000"),
+        price=Decimal(100000),
+        rules=RULES,
+    )
+
+    assert result.quantity == Decimal("0.01000")
+
+
+def test_quantity_below_minimum_after_rounding_is_rejected():
+    with pytest.raises(OrderValidationError):
+        OrderValidator().validate(
+            quantity=Decimal("0.000009"),
+            price=Decimal(100000),
+            rules=RULES,
+        )

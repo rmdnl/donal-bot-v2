@@ -12,6 +12,7 @@ class SelectionError(ValueError):
 class Candidate:
     symbol: str
     score: Decimal
+    signal_id: str = ""
 
 
 class TopCoinSelector:

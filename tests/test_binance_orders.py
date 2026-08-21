@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from app.config.settings import Settings
 from app.exchange.binance_orders import BinanceOrderClient, BinanceOrderError
 
@@ -224,3 +226,84 @@ def test_place_market_sell_builds_sell_market_order():
         "/api/v3/order",
         expected,
     )
+
+
+def test_request_timeout_raises_timeout_error(monkeypatch):
+    client = _client()
+
+    def fake_urlopen(*args, **kwargs):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(
+        "app.exchange.binance_orders.urlopen",
+        fake_urlopen,
+    )
+
+    with pytest.raises(TimeoutError):
+        client._request(
+            "POST",
+            "/api/v3/order",
+            {
+                "symbol": "BTCUSDT",
+                "side": "SELL",
+                "type": "MARKET",
+                "quantity": "0.01",
+                "newClientOrderId": "DNL-TIMEOUT-001",
+            },
+        )
+
+
+
+def test_request_socket_timeout_reaches_reconciliation(monkeypatch):
+
+    client = _client()
+
+    def fake_urlopen(*args, **kwargs):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(
+        "app.exchange.binance_orders.urlopen",
+        fake_urlopen,
+    )
+
+    with pytest.raises(TimeoutError):
+        client._request(
+            "POST",
+            "/api/v3/order",
+            {
+                "symbol": "BTCUSDT",
+                "side": "SELL",
+                "type": "MARKET",
+                "quantity": "0.01",
+                "newClientOrderId": "DNL-SOCKET-TIMEOUT-001",
+            },
+        )
+
+
+def test_request_urlerror_remains_binance_order_error(monkeypatch):
+    from urllib.error import URLError
+
+    client = _client()
+
+    def fake_urlopen(*args, **kwargs):
+        raise URLError("connection failed")
+
+    monkeypatch.setattr(
+        "app.exchange.binance_orders.urlopen",
+        fake_urlopen,
+    )
+
+    with pytest.raises(BinanceOrderError) as exc:
+        client._request(
+            "POST",
+            "/api/v3/order",
+            {
+                "symbol": "BTCUSDT",
+                "side": "SELL",
+                "type": "MARKET",
+                "quantity": "0.01",
+                "newClientOrderId": "DNL-URLERROR-001",
+            },
+        )
+
+    assert "transport error" in str(exc.value)

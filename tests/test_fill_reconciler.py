@@ -302,3 +302,27 @@ def test_second_partial_sell_closes_remaining_position(tmp_path):
         + Decimal("0.00312")
         + Decimal("0.002343")
     )
+
+
+def test_fill_journal_preserves_price_and_fee(tmp_path):
+    journal = TradeJournal(
+        str(tmp_path / "trades.db")
+    )
+    positions = PositionManager()
+
+    fill = make_fill("DNL-JOURNAL-PRICE-FEE")
+
+    reconciler = FillReconciler(
+        journal,
+        positions,
+    )
+
+    reconciler.reconcile(fill)
+
+    entry = journal.get(
+        "DNL-JOURNAL-PRICE-FEE"
+    )
+
+    assert entry is not None
+    assert entry.price == "77857.73"
+    assert entry.fee == "0.00000007"

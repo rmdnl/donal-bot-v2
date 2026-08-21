@@ -5,8 +5,11 @@ from decimal import Decimal
 
 from app.execution.execution_adapter import (
     ExchangeOrder,
+    ExchangeOrderStatus,
     ExecutionAdapter,
 )
+from app.execution.execution_settlement import ExecutionSettlement
+from app.execution.idempotency import make_client_order_id
 from app.risk.risk_manager import RiskManager
 from app.strategy.scanner_engine import ScannerEngine
 
@@ -26,11 +29,13 @@ class ExecutionTradingLoop:
         scanner: ScannerEngine,
         risk: RiskManager,
         execution: ExecutionAdapter,
+        settlement: ExecutionSettlement | None = None,
         dry_run: bool = True,
     ) -> None:
         self.scanner = scanner
         self.risk = risk
         self.execution = execution
+        self.settlement = settlement
         self.dry_run = dry_run
 
     def run_once(
@@ -81,11 +86,30 @@ class ExecutionTradingLoop:
                 reason="risk approved",
             )
 
+        if not client_order_id:
+            if not candidate.signal_id:
+                return ExecutionDecision(
+                    symbol=candidate.symbol,
+                    score=candidate.score,
+                    action="WAIT",
+                    reason="signal_id is required",
+                )
+            client_order_id = make_client_order_id(
+                candidate.symbol,
+                candidate.signal_id,
+            )
+
         order = self.execution.submit_buy(
             symbol=candidate.symbol,
             quantity=float(decision.quantity),
             client_order_id=client_order_id,
         )
+
+        if (
+            self.settlement is not None
+            and order.status == ExchangeOrderStatus.FILLED
+        ):
+            self.settlement.settle(order)
 
         return ExecutionDecision(
             symbol=candidate.symbol,

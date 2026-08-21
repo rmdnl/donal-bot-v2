@@ -44,6 +44,11 @@ class CandleFeed:
             Candle(
                 close=Decimal(str(row["close"])),
                 volume=Decimal(str(row["volume"])),
+                open_time=(
+                    int(row["open_time"].timestamp() * 1000)
+                    if "open_time" in row.index
+                    else 0
+                ),
             )
             for _, row in frame.iterrows()
         ]

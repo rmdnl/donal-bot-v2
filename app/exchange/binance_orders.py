@@ -261,7 +261,13 @@ class BinanceOrderClient:
 
             raise BinanceOrderError(detail) from exc
 
-        except (URLError, TimeoutError, OSError) as exc:
+        except TimeoutError:
+            # A request may have reached Binance and the order may
+            # already be FILLED. Let ExecutionAdapter reconcile it
+            # instead of treating it as a normal transport failure.
+            raise
+
+        except (URLError, OSError) as exc:
             raise BinanceOrderError(
                 f"Binance order transport error: {exc}"
             ) from exc

@@ -28,6 +28,8 @@ class ExchangeOrder:
     requested_quantity: float
     executed_quantity: float
     executed_quote_quantity: float = 0.0
+    side: str = ""
+    fee: float = 0.0
 
     @property
     def average_fill_price(self) -> float:
