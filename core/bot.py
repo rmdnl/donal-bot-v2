@@ -154,9 +154,6 @@ class Bot:
 
         # Entry + risk veto
         if sig.buy_signal and not st.in_position:
-            if blackout:
-                self.states.save_state(st)
-                return
             if symbol != "BTCUSDT" and btc_regime is not None and btc_regime.mode == Regime.BEAR:
                 logger.info(f"btc_gate_veto {symbol}: BTC bear")
                 self.states.save_state(st)
@@ -259,8 +256,10 @@ class Bot:
     def sync_position(self, symbol, st):
         if not st.in_position: return st
         base = symbol.replace("USDT", "")
-        free = self.client.get_free_balance(base)
-        if free < st.quantity * 0.999:
+        balance = self.client.get_asset_balance(base)
+        total_balance = balance["total"]
+
+        if total_balance < st.quantity * 0.999:
             self._record_external_exit(symbol, st)
             return st
         if st.oco_order_list_id:

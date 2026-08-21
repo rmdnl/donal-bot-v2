@@ -99,6 +99,28 @@ class BinanceSpotBot:
         return float(bal["free"]) if bal else 0.0
 
     @retry()
+    def get_asset_balance(self, asset):
+        self.rate_limiter.acquire(1)
+        bal = self.client.get_asset_balance(asset=asset)
+        self.rate_limiter.update_from_header(self._weight())
+
+        if not bal:
+            return {
+                "free": 0.0,
+                "locked": 0.0,
+                "total": 0.0,
+            }
+
+        free = float(bal.get("free", 0))
+        locked = float(bal.get("locked", 0))
+
+        return {
+            "free": free,
+            "locked": locked,
+            "total": free + locked,
+        }
+
+    @retry()
     def get_total_portfolio_value_usdt(self, symbols, states):
         total = self.get_free_balance("USDT")
         for sym, st in states.items():
