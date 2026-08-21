@@ -9,3 +9,7 @@ data/*.db
 data/*.sqlite*
 logs/*.log
 *.egg-info/
+
+# Runtime files
+bot.log
+app/runtime/

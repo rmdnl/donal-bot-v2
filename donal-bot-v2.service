@@ -1,0 +1,15 @@
+[Unit]
+Description=DONAL Bot V2 (Binance multi-regime trading bot)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/donal-bot-v2
+Environment="PATH=/home/ubuntu/donal-bot-v2/.venv/bin:/usr/bin:/bin"
+ExecStart=/home/ubuntu/donal-bot-v2/.venv/bin/python main.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

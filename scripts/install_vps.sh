@@ -19,13 +19,13 @@ if [ ! -f .env ]; then
 fi
 
 echo ">> Registering systemd service"
-sudo cp donal-bot-pro.service /etc/systemd/system/
+sudo cp donal-bot-v2.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable donal-bot-pro
+sudo systemctl enable donal-bot-v2
 
 echo ""
 echo "Instalasi selesai."
 echo "1) nano .env          (isi API keys + Telegram token)"
 echo "2) nano config.yaml   (opsional: sesuaikan parameter)"
-echo "3) sudo systemctl start donal-bot-pro"
-echo "4) journalctl -u donal-bot-pro -f"
+echo "3) sudo systemctl start donal-bot-v2"
+echo "4) journalctl -u donal-bot-v2 -f"

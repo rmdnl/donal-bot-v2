@@ -12,3 +12,4 @@ tenacity>=8.2,<10
 pytest>=8,<9
 pytest-asyncio>=0.23,<1
 ruff>=0.6,<1
+python-binance==1.0.37

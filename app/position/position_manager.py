@@ -27,7 +27,33 @@ class Position:
 
 class PositionManager:
     def __init__(self) -> None:
-        self.position = Position()
+        self.positions: dict[str, Position] = {}
+
+    @property
+    def position(self) -> Position:
+        if not self.positions:
+            return Position()
+
+        if len(self.positions) == 1:
+            return next(iter(self.positions.values()))
+
+        active = [
+            position
+            for position in self.positions.values()
+            if position.state != PositionState.FLAT
+        ]
+
+        if len(active) == 1:
+            return active[0]
+
+        return next(iter(self.positions.values()))
+
+    def get(self, symbol: str) -> Position:
+        symbol = self._normalize_symbol(symbol)
+        return self.positions.get(
+            symbol,
+            Position(symbol=symbol),
+        )
 
     def enter(
         self,
@@ -36,8 +62,8 @@ class PositionManager:
         price: Decimal,
         fee: Decimal = Decimal(0),
     ) -> Position:
-        if not symbol:
-            raise PositionError("symbol is required")
+        symbol = self._normalize_symbol(symbol)
+
         if quantity <= 0:
             raise PositionError("quantity must be positive")
         if price <= 0:
@@ -45,18 +71,24 @@ class PositionManager:
         if fee < 0:
             raise PositionError("fee cannot be negative")
 
-        if self.position.state != PositionState.FLAT:
-            raise PositionError("position is not flat")
+        current = self.get(symbol)
 
-        self.position = Position(
+        if current.state != PositionState.FLAT:
+            raise PositionError(
+                f"position is not flat: {symbol}"
+            )
+
+        position = Position(
             state=PositionState.LONG,
-            symbol=symbol.upper(),
+            symbol=symbol,
             quantity=quantity,
             average_entry=price,
             realized_pnl=-fee,
             total_fees=fee,
         )
-        return self.position
+
+        self.positions[symbol] = position
+        return position
 
     def restore(
         self,
@@ -66,70 +98,100 @@ class PositionManager:
         realized_pnl: Decimal = Decimal(0),
         total_fees: Decimal = Decimal(0),
     ) -> Position:
-        if not symbol:
-            raise PositionError("symbol is required")
+        symbol = self._normalize_symbol(symbol)
 
         if quantity <= 0:
             raise PositionError("quantity must be positive")
-
         if average_entry <= 0:
             raise PositionError(
                 "average_entry must be positive"
             )
-
         if total_fees < 0:
             raise PositionError(
                 "total_fees cannot be negative"
             )
 
-        self.position = Position(
+        position = Position(
             state=PositionState.LONG,
-            symbol=symbol.upper(),
+            symbol=symbol,
             quantity=quantity,
             average_entry=average_entry,
             realized_pnl=realized_pnl,
             total_fees=total_fees,
         )
 
-        return self.position
+        self.positions[symbol] = position
+        return position
 
     def exit(
         self,
         quantity: Decimal,
         price: Decimal,
         fee: Decimal = Decimal(0),
+        symbol: str | None = None,
     ) -> Position:
-        if self.position.state != PositionState.LONG:
-            raise PositionError("no long position")
+        if symbol is None:
+            current = self.position
+            if not current.symbol:
+                raise PositionError("symbol is required")
+            symbol = current.symbol
+        else:
+            symbol = self._normalize_symbol(symbol)
+
+        current = self.get(symbol)
+
+        if current.state != PositionState.LONG:
+            raise PositionError(
+                f"no long position: {symbol}"
+            )
         if quantity <= 0:
-            raise PositionError("quantity must be positive")
+            raise PositionError(
+                "quantity must be positive"
+            )
         if price <= 0:
-            raise PositionError("price must be positive")
+            raise PositionError(
+                "price must be positive"
+            )
         if fee < 0:
-            raise PositionError("fee cannot be negative")
-        if quantity > self.position.quantity:
-            raise PositionError("exit quantity exceeds position")
+            raise PositionError(
+                "fee cannot be negative"
+            )
+        if quantity > current.quantity:
+            raise PositionError(
+                "exit quantity exceeds position"
+            )
 
         pnl = (
-            price - self.position.average_entry
+            price - current.average_entry
         ) * quantity - fee
 
-        remaining = self.position.quantity - quantity
+        remaining = current.quantity - quantity
 
         if remaining == 0:
-            self.position = Position(
+            position = Position(
                 state=PositionState.FLAT,
-                realized_pnl=self.position.realized_pnl + pnl,
-                total_fees=self.position.total_fees + fee,
+                realized_pnl=current.realized_pnl + pnl,
+                total_fees=current.total_fees + fee,
             )
+            self.positions[symbol] = position
         else:
-            self.position = Position(
+            position = Position(
                 state=PositionState.LONG,
-                symbol=self.position.symbol,
+                symbol=symbol,
                 quantity=remaining,
-                average_entry=self.position.average_entry,
-                realized_pnl=self.position.realized_pnl + pnl,
-                total_fees=self.position.total_fees + fee,
+                average_entry=current.average_entry,
+                realized_pnl=current.realized_pnl + pnl,
+                total_fees=current.total_fees + fee,
             )
+            self.positions[symbol] = position
 
-        return self.position
+        return position
+
+    @staticmethod
+    def _normalize_symbol(symbol: str) -> str:
+        symbol = symbol.strip().upper()
+
+        if not symbol:
+            raise PositionError("symbol is required")
+
+        return symbol

@@ -199,5 +199,5 @@ def test_recovery_handles_multiple_orders(tmp_path):
     result = engine.recover()
 
     assert result.checked == 2
-    assert result.reconciled == 1
-    assert result.failed == 1
+    assert result.reconciled == 2
+    assert result.failed == 0
