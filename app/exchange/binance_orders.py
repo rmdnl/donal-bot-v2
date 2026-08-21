@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -12,6 +13,13 @@ from app.exchange.binance_signed import BinanceSignedClient
 
 class BinanceOrderError(RuntimeError):
     """Raised when Binance order operations fail."""
+
+
+@dataclass(frozen=True)
+class OrderReconciliation:
+    status: Literal["FOUND", "NOT_FOUND"]
+    order_id: int | None
+    raw: dict | None = None
 
 
 @dataclass
@@ -84,6 +92,38 @@ class BinanceOrderClient:
                 "symbol": symbol.upper(),
                 "origClientOrderId": client_order_id,
             },
+        )
+
+    def reconcile_order(
+        self,
+        symbol: str,
+        client_order_id: str,
+    ) -> OrderReconciliation:
+        try:
+            order = self.get_order(
+                symbol,
+                client_order_id,
+            )
+        except BinanceOrderError as exc:
+            if "(code -2013)" in str(exc):
+                return OrderReconciliation(
+                    status="NOT_FOUND",
+                    order_id=None,
+                )
+            raise
+
+        order_id = order.get("orderId")
+
+        if not isinstance(order_id, int):
+            raise BinanceOrderError(
+                "Invalid Binance order response: "
+                "missing orderId"
+            )
+
+        return OrderReconciliation(
+            status="FOUND",
+            order_id=order_id,
+            raw=order,
         )
 
     def cancel_order(
