@@ -72,6 +72,47 @@ class BinanceOrderClient:
             },
         )
 
+    def place_market_sell(
+        self,
+        symbol: str,
+        quantity: str,
+        client_order_id: str,
+    ) -> dict:
+        if not symbol:
+            raise BinanceOrderError(
+                "symbol is required"
+            )
+        if not quantity:
+            raise BinanceOrderError(
+                "quantity is required"
+            )
+        try:
+            value = float(quantity)
+        except ValueError as exc:
+            raise ValueError(
+                "quantity must be numeric"
+            ) from exc
+        if value <= 0:
+            raise ValueError(
+                "quantity must be positive"
+            )
+        if not client_order_id:
+            raise BinanceOrderError(
+                "client_order_id is required"
+            )
+
+        return self._request(
+            "POST",
+            "/api/v3/order",
+            {
+                "symbol": symbol.upper(),
+                "side": "SELL",
+                "type": "MARKET",
+                "quantity": quantity,
+                "newClientOrderId": client_order_id,
+            },
+        )
+
     def get_order(
         self,
         symbol: str,

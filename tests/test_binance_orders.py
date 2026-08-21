@@ -188,3 +188,39 @@ def test_reconcile_order_does_not_hide_unknown_error() -> None:
             raise AssertionError(
                 "Expected transport error to propagate"
             )
+
+
+def test_place_market_sell_builds_sell_market_order():
+    from unittest.mock import patch
+
+    settings = Settings(
+        binance_api_key="test-key",
+        binance_api_secret="test-secret",
+    )
+    client = BinanceOrderClient(settings)
+
+    expected = {
+        "symbol": "BTCUSDT",
+        "side": "SELL",
+        "type": "MARKET",
+        "quantity": "0.00007000",
+        "newClientOrderId": "DNL-SELL-TEST-001",
+    }
+
+    with patch.object(
+        client,
+        "_request",
+        return_value={"status": "FILLED"},
+    ) as request:
+        result = client.place_market_sell(
+            "BTCUSDT",
+            "0.00007000",
+            "DNL-SELL-TEST-001",
+        )
+
+    assert result["status"] == "FILLED"
+    request.assert_called_once_with(
+        "POST",
+        "/api/v3/order",
+        expected,
+    )
