@@ -87,3 +87,45 @@ def test_invalid_price_is_ignored():
     )
 
     assert result == []
+
+
+def test_rank_by_signal_score():
+    scanner = MarketScanner(
+        ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+    )
+
+    scored = [
+        ("BTCUSDT", Decimal(65)),
+        ("ETHUSDT", Decimal(85)),
+        ("BNBUSDT", Decimal(75)),
+    ]
+
+    result = scanner.rank_by_signal_score(scored)
+
+    assert result == [
+        ("ETHUSDT", Decimal(85)),
+        ("BNBUSDT", Decimal(75)),
+        ("BTCUSDT", Decimal(65)),
+    ]
+
+
+def test_rank_by_signal_score_has_limit():
+    scanner = MarketScanner(
+        ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+    )
+
+    scored = [
+        ("BTCUSDT", Decimal(65)),
+        ("ETHUSDT", Decimal(85)),
+        ("BNBUSDT", Decimal(75)),
+    ]
+
+    result = scanner.rank_by_signal_score(
+        scored,
+        limit=2,
+    )
+
+    assert result == [
+        ("ETHUSDT", Decimal(85)),
+        ("BNBUSDT", Decimal(75)),
+    ]

@@ -31,6 +31,35 @@ class MarketScanner:
 
         self.symbols = tuple(dict.fromkeys(normalized))
 
+    def rank_by_signal_score(
+        self,
+        scored: list[tuple[str, Decimal]],
+        limit: int | None = None,
+    ) -> list[tuple[str, Decimal]]:
+        allowed = set(self.symbols)
+
+        if limit is not None and limit <= 0:
+            raise MarketDataError(
+                "limit must be positive"
+            )
+
+        valid = [
+            (symbol.upper(), score)
+            for symbol, score in scored
+            if symbol.upper() in allowed
+        ]
+
+        ranked = sorted(
+            valid,
+            key=lambda item: item[1],
+            reverse=True,
+        )
+
+        if limit is None:
+            return ranked
+
+        return ranked[:limit]
+
     def rank_by_volume(
         self,
         snapshots: list[MarketSnapshot],
