@@ -1,233 +1,266 @@
-# donal-bot-pro
+# DONAL Bot V2
 
-Bot trading spot otomatis untuk Binance dengan routing strategi multi-regime,
-manajemen risiko berlapis ala institusional, dan framework backtesting lengkap.
+Bot trading spot otomatis untuk Binance dengan routing strategi multi-regime, manajemen risiko berlapis, eksekusi aman, recovery setelah restart, dan dashboard web read-only yang ringan serta mobile-friendly.
 
-> Dibangun untuk trading algoritmik yang serius: setiap keputusan tercatat,
-> setiap posisi terlindungi, dan setiap strategi divalidasi sebelum deploy.
+> Current deployment: Binance Testnet, `dry_run=false`
+>
+> Dashboard: port `8501`
+>
+> Verified test suite: **247 passed**
 
----
+## Status
 
-## Ringkasan
+| Component | Status |
+|---|---|
+| Binance Spot Testnet | 🟢 Active |
+| Multi-regime strategy | 🟢 Active |
+| Risk management | 🟢 Active |
+| OCO protection | 🟢 Active |
+| Partial-fill settlement | 🟢 Hardened |
+| Fill idempotency | 🟢 Hardened |
+| Recovery / restart sync | 🟢 Tested |
+| Graceful shutdown | 🟢 Active |
+| Telegram monitoring | 🟢 Active |
+| Read-only dashboard | 🟢 Active |
+| Automated tests | 🟢 247 passed |
 
-Bot memantau beberapa simbol dan mengarahkan masing-masing ke strategi yang
-paling cocok dengan regime pasar saat ini, terdeteksi pada timeframe 4H:
+Current deployment:
 
-| Regime   | Kondisi                    | Strategi                          |
-|----------|----------------------------|-----------------------------------|
-| TREND    | ADX > 25 dan EMA20 > EMA60 | DONAL breakout (HH20 pada 1H)     |
-| SIDEWAYS | ADX < 20                   | Mean reversion (Bollinger + RSI)  |
-| BEAR     | EMA20 < EMA60              | Tanpa entry baru; hanya exit      |
-
-Seluruh logika dipakai bersama antara bot live dan engine backtest, sehingga
-hasil backtest mereproduksi perilaku live secara akurat.
-
----
-
-## Fitur Utama
-
-### Trading
-- Pemantauan multi-simbol dengan filter tren 4H + konfirmasi entry 1H
-- OCO take-profit / stop-loss dengan pemasangan ulang otomatis (self-healing)
-- Breakeven stop: SL pindah ke entry setelah profit 1x ATR
-- State posisi di SQLite; tahan restart dan crash
-
-### Manajemen Risiko Institusional
-- Position sizing berbasis risiko dengan batas exposure per-aset (7.5%) dan total (30%)
-- Limit rugi harian / mingguan dan kunci max drawdown
-- Kill switch flash-crash pada candle 1m dengan konfirmasi volume
-- Circuit breaker untuk kegagalan API dan order
-- **BTC gate** - altcoin dilarang entry saat BTC berada di regime bear
-- **Time stop** - posisi basi (>48 jam tanpa profit) ditutup otomatis
-- **Slippage monitor** - alert bila fill melenceng >0.15% dari sinyal
-
-### Operasional
-- Notifikasi dan kendali jarak jauh via Telegram
-- Laporan performa terjadwal + on-demand
-- Deteksi anomali: kesehatan API, penurunan saldo, posisi tak terlindungi
-- Logging JSON terstruktur dengan rotasi dan correlation ID
-- Dashboard analitik Streamlit (service terpisah, port 8501)
-- Suite unit test
-
-### Riset
-- Engine backtest multi-regime (identik dengan logika live)
-- Engine alternatif: swing Daily+4H, scalping 5m, pullback 15m
-- Optimizer parameter grid-search
-- Laporan visual equity / drawdown
-
----
-
-## Arsitektur
-
+```text
+mode=testnet
+dry_run=false
+symbols=BTCUSDT, ETHUSDT, BNBUSDT, SOLUSDT
+poll_interval=60s
 ```
-main.py                     entry point + wiring
-core/
-  bot.py                    main loop, eksekusi, sinkronisasi exchange
-  binance_client.py         rate limiter, retry, OCO (tahan beda versi)
-  state_manager.py          persistensi posisi SQLite
-  trade_history.py          database trade SQLite
-  structured_logger.py      logging JSON + rotasi
-  config_loader.py          config YAML + validasi
-strategies/
-  regime_detector.py        routing regime ADX + EMA
-  donal_strategy.py         trend-following breakout
-  mean_reversion_strategy.py strategi sideways
-  swing_strategy.py         swing Daily+4H + trailing stop
-  pullback_strategy.py      pullback 15m + filter tren 4H
-  indicators.py             EMA / RSI / ATR / HH (Wilder)
-risk/
-  risk_manager.py           sizing + clamp exposure + limit rugi
-  kill_switch.py            deteksi flash-crash
-  circuit_breaker.py        proteksi kegagalan API/order
-  breakeven_manager.py      penyesuaian SL otomatis
-monitoring/
-  telegram_notifier.py      notifikasi + perintah
-  daily_report.py           laporan terjadwal
-  anomaly_detector.py       pemantauan kesehatan
-  dashboard.py              UI web Streamlit (port 8501)
-backtest/
-  download_data.py          pengunduh data historis
-  engine.py                 simulator multi-regime
-  engine_swing.py           simulator swing Daily+4H
-  engine_scalp.py           simulator scalping 5m
-  engine_pullback.py        simulator pullback 15m
-  optimizer.py              grid search
-  report.py                 chart equity/drawdown
-~~~
 
----
+## Strategy
 
-## Layanan (systemd)
+Bot menggunakan routing berdasarkan market regime.
 
-| Service           | Fungsi                          |
-|-------------------|---------------------------------|
-| `donal-bot-pro`   | Bot trading (testnet/live)      |
-| `donal-dashboard` | Dashboard web di port 8501      |
+| Regime | Behaviour |
+|---|---|
+| TREND | DONAL trend/breakout strategy |
+| SIDEWAYS | Mean reversion |
+| BEAR | Block entry baru |
 
----
+Untuk altcoin, BTC regime digunakan sebagai gate tambahan. Ketika BTC berada dalam regime bearish, bot tidak membuka posisi baru pada altcoin.
 
-## Instalasi (VPS baru)
+## Execution Safety
+
+- Risk-based position sizing
+- Per-asset dan total exposure limits
+- Daily / weekly loss protection
+- Kill switch
+- Circuit breaker
+- Slippage monitoring
+- OCO stop-loss / take-profit
+- OCO recovery / replacement
+- Balance synchronization
+- Locked-balance awareness
+- Partial-fill settlement
+- Fill idempotency
+- Duplicate-fill protection
+- Restart recovery
+- Position reconciliation
+- Graceful SIGTERM shutdown
+
+Partial fill tidak dianggap sebagai full fill. Jika executed quantity berubah dari `0.002` menjadi `0.005`, reconciliation hanya menerapkan delta `0.003`.
+
+## Position & Recovery
+
+State posisi disimpan di SQLite:
+
+```text
+data/trades.db
+```
+
+Recovery engine menangani pending/filled orders, posisi setelah restart, partial exit, replay protection, dan idempotency.
+
+## Dashboard
+
+Dashboard web **read-only** berjalan pada port:
+
+```text
+8501
+```
+
+Dirancang untuk VPS kecil:
+
+- Lightweight web stack
+- Tanpa React / Node.js
+- Mobile-first
+- Auto refresh
+- Tidak memiliki endpoint BUY / SELL
+- Tidak menyimpan API key Binance
+
+Menampilkan bot status, equity, PnL, win rate, active positions, Entry/SL/TP, OCO status, recent trades, heartbeat, cycle interval, error count, risk snapshot, dan equity history.
+
+Akses:
+
+```text
+http://<IP-VPS>:8501
+```
+
+Service:
+
+```text
+donal-dashboard.service
+```
+
+## Trading Service
+
+```text
+donal-bot-v2.service
+```
+
+Cek:
 
 ```bash
-git clone https://github.com/rmdnl/donal-bot-pro.git
-cd donal-bot-pro
-chmod +x scripts/install_vps.sh
-./scripts/install_vps.sh
-
-nano .env                  # isi kredensial
-sudo systemctl start donal-bot-pro
-sudo systemctl start donal-dashboard
-journalctl -u donal-bot-pro -f
-
-# Dashboard web tersedia di http://<IP-VPS>:8501
+systemctl status donal-bot-v2.service
+systemctl status donal-dashboard.service
 ```
 
-Jalankan pertama kali dalam mode simulasi:
+Restart:
 
 ```bash
-venv/bin/python main.py --dry-run
+sudo systemctl restart donal-bot-v2.service
+sudo systemctl restart donal-dashboard.service
 ```
 
----
+## Configuration
 
-## Konfigurasi
-
-- `config.yaml` - strategi, risiko, kill switch, logging, monitoring
-- `.env` - rahasia (tidak pernah di-commit)
-
-Parameter risiko default:
-
-| Parameter                | Default |
-|--------------------------|---------|
-| Risiko per trade         | 1%      |
-| Exposure maks per aset   | 7.5%    |
-| Exposure total maks      | 30%     |
-| Limit rugi harian        | 3%      |
-| Limit rugi mingguan      | 5%      |
-| Max drawdown             | 10%     |
-| Posisi terbuka maks      | 4       |
-
----
-
-## Perintah Telegram
-
-~~~
-/status      status bot + risiko
-/positions   posisi terbuka
-/regime      regime pasar per simbol
-/pnl         ringkasan performa
-/recent N    N trade terakhir
-/config      konfigurasi aktif
-/pause       blokir entry baru
-/resume      izinkan entry
-/close SYM   tutup posisi manual
-/report      kirim laporan performa
-/help        daftar perintah
+```text
+config.yaml
+.env
 ```
 
----
+Contoh environment:
 
-## Backtesting
+```text
+BINANCE_API_KEY=...
+BINANCE_API_SECRET=...
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+```
+
+Jangan commit `.env`.
+
+Untuk Binance API key gunakan Spot trading only, withdrawal disabled, IP restriction, dan Testnet selama fase observasi.
+
+## Telegram
+
+Telegram digunakan untuk monitoring dan operational control. Command mengikuti implementasi bot saat ini, termasuk status, positions, regime, PnL, recent trades, config, pause/resume, report, dan help.
+
+## Logging
+
+Structured JSON logging digunakan pada:
+
+```text
+bot.log
+```
+
+Contoh heartbeat:
+
+```json
+{"level":"INFO","module":"bot","msg":"bot_cycle symbols=4 equity=5401.79"}
+```
+
+## Architecture
+
+```text
+main.py
+├── core/
+├── app/
+│   ├── execution/
+│   ├── exchange/
+│   ├── position/
+│   ├── recovery/
+│   ├── portfolio/
+│   ├── trading/
+│   └── storage/
+├── strategies/
+├── risk/
+├── monitoring/
+├── dashboard/
+├── tests/
+└── data/
+```
+
+## Installation
 
 ```bash
-# Unduh data historis
-venv/bin/python -m backtest.download_data --symbols BTCUSDT,ETHUSDT --months 6
-
-# Backtest multi-regime
-venv/bin/python -m backtest.engine --symbol BNBUSDT
-
-# Uji A/B: routing regime nyala vs mati
-venv/bin/python -m backtest.engine --symbol BNBUSDT --no_regime
-
-# Optimasi SL/TP
-venv/bin/python -m backtest.optimizer --symbol BNBUSDT --top 10
-
-# Buat chart equity/drawdown
-venv/bin/python -m backtest.report --symbol BNBUSDT
-
-# Backtest strategi alternatif (riset)
-venv/bin/python -m backtest.engine_swing --symbol BNBUSDT
-venv/bin/python -m backtest.engine_scalp --symbol BTCUSDT
-venv/bin/python -m backtest.engine_pullback --symbol BTCUSDT
+git clone https://github.com/rmdnl/donal-bot-v2.git
+cd donal-bot-v2
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
----
+Configure:
+
+```bash
+nano .env
+nano config.yaml
+```
+
+Run tests:
+
+```bash
+pytest -q
+```
 
 ## Testing
 
-```bash
-venv/bin/python -m pytest tests/ -q
+Verified full suite:
+
+```text
+247 passed
 ```
 
----
+Focused execution/recovery suite:
 
-## Keamanan
+```bash
+pytest -q tests/test_recovery_v2.py tests/test_recovery_position_sync.py tests/test_execution_settlement.py tests/test_execution_loop.py tests/test_bot_oco_balance.py
+```
 
-- `.env` di-gitignore; jangan pernah commit rahasia
-- API key Binance: hanya spot trading, withdrawals dimatikan, dibatasi IP
-- Mulai dari testnet; naik ke live hanya setelah validasi positif
+Verified focused result:
 
----
+```text
+29 passed
+```
 
-## Status & Roadmap
+Coverage includes partial fills, duplicate fills, idempotent settlement, partial sells, restart recovery, OCO balance handling, position synchronization, execution settlement, order idempotency, and safe order execution.
 
-Selesai: strategi multi-regime, risiko berlapis, OCO self-heal, breakeven,
-kendali Telegram, dashboard, suite backtest (multi-regime, swing, scalping,
-pullback), unit test.
+## Current Deployment
 
-Hasil riset (18 bulan data, 4 simbol, 6 keluarga strategi): strategi teknikal
-retail di pair major spot tidak memiliki edge setelah biaya (PF terbaik 0.89).
-Fase riset alpha ditutup; bot berjalan di testnet untuk observasi stabilitas
-platform.
+Branch:
 
-Direncanakan (opsional): backup offsite otomatis, CI/CD, riset funding/basis
-market-neutral.
+```text
+v2-foundation
+```
 
----
+The bot is currently intended for Binance Testnet observation before production deployment.
+
+Passing automated tests does not guarantee profitable trading or production safety. Exchange behaviour, fills, OCO lifecycle, recovery, and risk controls must also be validated under testnet conditions.
+
+## Roadmap
+
+### Phase 1
+Trading engine hardening, execution safety, recovery, idempotency, OCO protection, graceful shutdown.
+
+### Phase 2
+Read-only dashboard, mobile UI, health monitoring, Telegram observability.
+
+### Phase 3
+Market analytics, equity snapshots, performance analytics, dashboard improvements.
+
+### Phase 4
+Extended testnet observation, failure injection, operational validation, production readiness review.
 
 ## Disclaimer
 
-Trading cryptocurrency mengandung risiko kerugian yang besar. Software ini
-disediakan apa adanya, tanpa jaminan. Lakukan backtest dan paper-trade secara
-menyeluruh sebelum memakai dana sungguhan. Ini bukan nasihat keuangan.
-Gunakan dengan risiko Anda sendiri.
+Cryptocurrency trading carries substantial risk of loss.
+
+This software is provided as-is without guarantees. Use Binance Testnet and paper trading for validation before considering live capital.
+
+This project is not financial advice.
